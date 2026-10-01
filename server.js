@@ -7,7 +7,8 @@ import crypto from 'node:crypto';
 import { ROOT, DIRS, getKey, setKey, setYouTube, publicStatus } from './lib/settings.js';
 import { ffmpegCapabilities, probe } from './lib/ffmpeg.js';
 import { writeScript, testClaude } from './lib/script.js';
-import { listVoices, generateVoiceover, testElevenLabs, getAccount, listModels } from './lib/voice.js';
+import { listVoices, generateVoiceover, testElevenLabs, getAccount, listModels, generateMusic } from './lib/voice.js';
+import { generateImage, startAnimate, getAiJob, testFal } from './lib/ai.js';
 import { installAuth } from './lib/auth.js';
 import { searchMedia, sourcesAvailable, testPexels, testPixabay } from './lib/media.js';
 import { startRender, getJob, listVideos, deleteVideo, videoFile } from './lib/render.js';
@@ -52,7 +53,7 @@ app.get('/api/status', wrap(async (req, res) => {
   res.json({ connections: publicStatus(), ffmpeg: await ffmpegCapabilities(), sources: sourcesAvailable(), signedIn: !!APP_PASSWORD });
 }));
 
-const testers = { elevenlabs: testElevenLabs, anthropic: testClaude, pexels: testPexels, pixabay: testPixabay };
+const testers = { elevenlabs: testElevenLabs, anthropic: testClaude, pexels: testPexels, pixabay: testPixabay, fal: testFal };
 
 app.post('/api/connections/:name', wrap(async (req, res) => {
   const { name } = req.params;
@@ -79,9 +80,9 @@ app.delete('/api/connections/:name', wrap(async (req, res) => {
 // --- Script ------------------------------------------------------------------
 
 app.post('/api/script', wrap(async (req, res) => {
-  const { topic = '', tone = 'friendly', lengthSec = 60, format = 'landscape', script = '' } = req.body;
+  const { topic = '', tone = 'friendly', lengthSec = 60, format = 'landscape', script = '', style = 'stock', character = '' } = req.body;
   if (!topic.trim() && !script.trim()) throw new Error('Tell me what the video is about first.');
-  const out = await writeScript({ topic: topic.slice(0, 2000), tone, lengthSec: Math.min(600, Math.max(15, Number(lengthSec) || 60)), format, script: script.slice(0, 20000) });
+  const out = await writeScript({ topic: topic.slice(0, 2000), tone, lengthSec: Math.min(600, Math.max(15, Number(lengthSec) || 60)), format, script: script.slice(0, 20000), style: String(style).slice(0, 40), character: String(character).slice(0, 400) });
   res.json(out);
 }));
 
@@ -113,6 +114,28 @@ app.post('/api/voice/upload', upload.single('file'), wrap(async (req, res) => {
     throw new Error("That file doesn't look like audio. Try an MP3, WAV or M4A.");
   }
   res.json({ file: req.file.filename, name: req.file.originalname, duration: info.duration, url: `/files/uploads/${req.file.filename}` });
+}));
+
+// --- AI images & clips (fal.ai) and music -------------------------------------
+
+app.post('/api/ai/image', wrap(async (req, res) => {
+  const { prompt = '', style, character, format, seed } = req.body;
+  res.json(await generateImage({ prompt: String(prompt).slice(0, 1500), style, character: String(character || '').slice(0, 400), format, seed: Number.isInteger(seed) ? seed : undefined }));
+}));
+
+app.post('/api/ai/animate', wrap(async (req, res) => {
+  const { image, prompt, style, character, seconds } = req.body;
+  res.json({ jobId: startAnimate({ image, prompt: String(prompt || '').slice(0, 1500), style, character: String(character || '').slice(0, 400), seconds }) });
+}));
+
+app.get('/api/ai/jobs/:id', wrap(async (req, res) => {
+  const job = getAiJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'That animation was lost (the app restarted). Start it again.' });
+  res.json(job);
+}));
+
+app.post('/api/music/elevenlabs', wrap(async (req, res) => {
+  res.json(await generateMusic({ prompt: String(req.body.prompt || '').slice(0, 500), seconds: req.body.seconds }));
 }));
 
 // --- Media -------------------------------------------------------------------

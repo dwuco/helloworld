@@ -10,6 +10,7 @@ import { FFMPEG, FFPROBE } from '../lib/ffmpeg.js';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'avs-'));
 const PORT = 3999;
 const MOCK = 3998;
+const FALMOCK = 3994;
 const base = `http://127.0.0.1:${PORT}`;
 
 const ff = (...a) => execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', ...a]);
@@ -20,6 +21,32 @@ ff('-f', 'lavfi', '-i', 'testsrc=s=1280x720:d=2:r=25', '-pix_fmt', 'yuv420p', pa
 
 // Mock ElevenLabs: /voices, /user, /user/subscription, /models and /text-to-speech/:id
 const ttsModels = [];
+const musicRequests = [];
+
+// Mock fal.ai queue: submit -> status (queued, then completed) -> result
+const falInputs = [];
+const falReqs = new Map();
+const falBase = `http://127.0.0.1:${FALMOCK}`;
+const falMock = http.createServer((req, res) => {
+  if (req.url.startsWith('/files/')) { res.writeHead(200, { 'Content-Type': req.url.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg' }); return res.end(fs.readFileSync(path.join(tmp, path.basename(req.url)))); }
+  if (req.headers.authorization !== 'Key goodkey123:secretkey12') { res.writeHead(401, { 'Content-Type': 'application/json' }); return res.end('{"detail":"Unauthorized"}'); }
+  const m = req.url.match(/^\/req\/(\w+)(\/status)?$/);
+  if (m) {
+    const r = falReqs.get(m[1]);
+    if (m[2]) { r.polls += 1; return json(res, r.polls < 2 ? { status: 'IN_QUEUE', queue_position: 0 } : { status: 'COMPLETED' }); }
+    return json(res, /flux/.test(r.model) ? { images: [{ url: `${falBase}/files/photo.jpg`, width: 1280, height: 720 }] } : { video: { url: `${falBase}/files/clip.mp4` } });
+  }
+  if (req.method === 'GET') { res.writeHead(404); return res.end('{}'); }
+  let body = '';
+  req.on('data', (d) => (body += d));
+  req.on('end', () => {
+    const id = `r${falReqs.size + 1}`;
+    const model = req.url.slice(1);
+    falReqs.set(id, { model, polls: 0 });
+    falInputs.push({ model, input: JSON.parse(body) });
+    json(res, { request_id: id, status_url: `${falBase}/req/${id}/status`, response_url: `${falBase}/req/${id}` });
+  });
+}).listen(FALMOCK);
 const json = (res, body) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 const mock = http.createServer((req, res) => {
   if (req.headers['xi-api-key'] !== 'test-key') { res.writeHead(401, { 'Content-Type': 'application/json' }); return res.end('{"detail":{"message":"bad key"}}'); }
@@ -36,6 +63,12 @@ const mock = http.createServer((req, res) => {
     { model_id: 'eleven_flash_v2_5', name: 'Eleven Flash v2.5', can_do_text_to_speech: true, description: 'Ultra low latency.' },
     { model_id: 'eleven_english_sts_v2', name: 'Speech to speech', can_do_text_to_speech: false },
   ]);
+  if (req.url.startsWith('/music')) {
+    let body = '';
+    req.on('data', (d) => (body += d));
+    req.on('end', () => { musicRequests.push(JSON.parse(body)); res.writeHead(200, { 'Content-Type': 'audio/mpeg' }); res.end(fs.readFileSync(path.join(tmp, 'tone.mp3'))); });
+    return;
+  }
   if (req.url.startsWith('/text-to-speech/v1')) {
     let body = '';
     req.on('data', (d) => (body += d));
@@ -52,7 +85,7 @@ const mock = http.createServer((req, res) => {
 }).listen(MOCK);
 
 const app = spawn(process.execPath, ['server.js'], {
-  env: { ...process.env, PORT: String(PORT), DATA_DIR: path.join(tmp, 'data'), ELEVENLABS_API_URL: `http://127.0.0.1:${MOCK}`, ANTHROPIC_API_KEY: '', ELEVENLABS_API_KEY: '', PEXELS_API_KEY: '', PIXABAY_API_KEY: '' },
+  env: { ...process.env, PORT: String(PORT), DATA_DIR: path.join(tmp, 'data'), ELEVENLABS_API_URL: `http://127.0.0.1:${MOCK}`, FAL_API_URL: falBase, FAL_KEY: '', ANTHROPIC_API_KEY: '', ELEVENLABS_API_KEY: '', PEXELS_API_KEY: '', PIXABAY_API_KEY: '' },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
 await new Promise((r) => app.stdout.on('data', (d) => d.toString().includes('running') && r()));
@@ -120,6 +153,24 @@ try {
   const vo3 = await call('/api/voice/elevenlabs', { json: { voiceId: 'v1', modelId: 'eleven_flash_v2_5', scenes, reuse: vo.segments } });
   check(ttsModels.length - before === scenes.length && ttsModels.at(-1) === 'eleven_flash_v2_5' && vo3.segments[0].modelId === 'eleven_flash_v2_5', 'switching model re-records with the chosen model');
 
+  console.log('AI pictures, clips and music (mock fal.ai + ElevenLabs)');
+  const styled = await call('/api/script', { json: { topic: 'a brave turtle', lengthSec: 20, style: 'anime', character: 'a tiny green turtle with a red backpack' } });
+  check(styled.scenes.every((s) => s.imagePrompt?.includes('tiny green turtle')), 'every scene gets an AI picture prompt with the main character');
+  let falBad = false;
+  try { await call('/api/connections/fal', { json: { key: 'wrongkey12:secretkey99' } }); } catch { falBad = true; }
+  check(falBad, 'a wrong fal.ai key is rejected');
+  await call('/api/connections/fal', { json: { key: 'goodkey123:secretkey12' } });
+  const pic = await call('/api/ai/image', { json: { prompt: 'a turtle at the pond edge', style: 'anime', character: 'a tiny green turtle', format: 'portrait', seed: 42 } });
+  const sent = falInputs.at(-1).input;
+  check(pic.type === 'image' && pic.source === 'ai' && pic.url.startsWith('/files/uploads/'), 'AI picture made and kept locally');
+  check(/anime illustration/.test(sent.prompt) && /tiny green turtle/.test(sent.prompt) && sent.seed === 42 && sent.image_size === 'portrait_16_9', 'style, character, seed and shape sent to the model');
+  const { jobId: animJob } = await call('/api/ai/animate', { json: { image: pic, prompt: 'the turtle walks forward', style: 'anime' } });
+  let anim;
+  for (let i = 0; i < 40; i++) { anim = await call(`/api/ai/jobs/${animJob}`); if (anim.status !== 'running') break; await new Promise((r) => setTimeout(r, 500)); }
+  check(anim.status === 'done' && anim.item.type === 'video' && falInputs.at(-1).input.image_url === pic.remoteUrl, 'picture animated into a video clip');
+  const music = await call('/api/music/elevenlabs', { json: { prompt: 'calm lo-fi', seconds: 10 } });
+  check(music.file && musicRequests.at(-1).music_length_ms === 10000, 'AI background music made at the right length');
+
   console.log('Media uploads');
   const photo = await uploadFile('/api/media/upload', path.join(tmp, 'photo.jpg'));
   const clip = await uploadFile('/api/media/upload', path.join(tmp, 'clip.mp4'));
@@ -134,6 +185,11 @@ try {
   check(r1.probe.streams.some((s) => s.codec_type === 'audio'), 'has an audio track');
   const expected = vo.segments.reduce((a, g) => a + g.duration + 0.35, 0.6);
   check(Math.abs(parseFloat(r1.probe.format.duration) - expected) < 0.25, `duration ${parseFloat(r1.probe.format.duration).toFixed(2)}s matches voice timeline (${expected.toFixed(2)}s)`);
+
+  console.log('Render: AI visuals + music + yellow captions');
+  const pAI = { ...p1, title: 'AI test', captionStyle: 'yellow', music: { file: music.file, volume: 0.3 }, scenes: p1.scenes.map((s, i) => ({ ...s, media: i % 2 ? anim.item : pic })) };
+  const rAI = await renderAndCheck(pAI, 'ai');
+  check(rAI.probe.streams.some((s) => s.codec_type === 'audio') && rAI.job.warnings.length === 0, 'AI pictures, AI clip and ducked music render cleanly');
 
   console.log('Render: uploaded voice, vertical');
   const up = await uploadFile('/api/voice/upload', path.join(tmp, 'voice.wav'));
@@ -155,7 +211,7 @@ try {
   check(/regenerate/i.test(staleErr), 'stale voiceover is caught before rendering');
 
   const { videos } = await call('/api/videos');
-  check(videos.length === 3, 'library lists 3 videos');
+  check(videos.length === 4, 'library lists 4 videos');
   const dl = await fetch(`${base}/api/videos/${videos[0].id}/download`);
   check(dl.ok && /attachment/.test(dl.headers.get('content-disposition')), 'download sends the MP4 as an attachment');
 
@@ -188,4 +244,5 @@ try {
 } finally {
   app.kill();
   mock.close();
+  falMock.close();
 }

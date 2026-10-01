@@ -10,6 +10,18 @@ Make a narrated video in five simple steps, right on your computer:
 
 Your work is saved automatically in the browser, so a refresh never loses anything.
 
+## What it can do
+
+- **Templates:** one tap fills in a ready idea, shape, length, tone, style, caption look and music mood (fun facts, short story, anime tale, kids story, explainer, product promo, motivation, travel).
+- **⚡ Make my video:** one button writes the script, records the voice, creates the visuals, adds music and renders. Then tweak any step.
+- **Styles:** real stock footage, or AI pictures in Cinematic, Photo-real, Anime, 3D cartoon, Storybook, Comic, Neon or Product ad.
+- **Main character:** describe them once and every AI picture keeps them looking the same.
+- **Animate:** turn any picture into a moving AI video clip, one scene or all at once.
+- **Captions:** Bold, Yellow pop, Boxed, Minimal or off.
+- **Background music:** AI music from your ElevenLabs account, or your own file. It dips automatically while the voice speaks.
+
+AI pictures and clips come from [fal.ai](https://fal.ai), which hosts FLUX (pictures) and Kling (video). It is pay as you go: pictures cost a fraction of a cent, while a 5 second clip costs more and takes one to three minutes. Different models can be set with `FAL_IMAGE_MODEL` and `FAL_VIDEO_MODEL`.
+
 ## Use it on your phone
 
 GitHub only shows the code. To use the app on your phone, it has to run somewhere your phone can reach. Pick one:
@@ -78,9 +90,10 @@ Click **Connections** in the top right, paste a key and press **Connect**. Each 
 | Claude | Writes scripts | [console.anthropic.com → API keys](https://console.anthropic.com/settings/keys) | Pay per use, a script costs about a cent |
 | Pexels | Real HD stock **video clips** + photos (recommended) | [pexels.com/api](https://www.pexels.com/api/new/) | Free |
 | Pixabay | Free stock videos + photos | [pixabay.com/api/docs](https://pixabay.com/api/docs/) | Free |
+| fal.ai | AI pictures and AI video clips | [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) | Pay as you go |
 | Openverse | Free CC photos | Nothing to do, always on | Free |
 
-Keys are stored only on your computer in `data/settings.json`. They are never sent to the browser. You can also set them as environment variables: `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`.
+Keys are stored only on your computer in `data/settings.json`. They are never sent to the browser. You can also set them as environment variables: `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `FAL_KEY`.
 
 ### YouTube publishing (optional, one-time setup)
 

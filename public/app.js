@@ -18,13 +18,40 @@ const LENGTHS = [
   [90, '1.5 min'],
   [120, '2 min'],
 ];
-const EXAMPLES = [
-  '5 surprising facts about octopuses',
-  'Morning habits of successful people',
-  'Why the ocean is blue',
-  'A quick tour of Tokyo at night',
-  '3 easy tips to sleep better',
+// One-tap starting points, like OpenArt's templates.
+const TEMPLATES = [
+  { id: 'facts', icon: '🤯', name: 'Fun facts', desc: 'Quick facts with a hook', topic: '5 surprising facts about octopuses', format: 'portrait', lengthSec: 30, tone: 'Energetic', style: 'stock', captionStyle: 'yellow', mood: 'Upbeat pop' },
+  { id: 'story', icon: '📖', name: 'Short story', desc: 'A tiny tale with a twist', topic: 'A lonely robot who finds a flower on Mars', format: 'portrait', lengthSec: 60, tone: 'Storytelling', style: 'cinematic', character: 'a small rusty robot with big round blue eyes', captionStyle: 'bold', mood: 'Epic cinematic' },
+  { id: 'anime', icon: '🌸', name: 'Anime tale', desc: 'Anime-style story', topic: 'A girl who can talk to the wind', format: 'portrait', lengthSec: 60, tone: 'Storytelling', style: 'anime', character: 'a teenage girl with short silver hair and a green scarf', captionStyle: 'boxed', mood: 'Calm lo-fi' },
+  { id: 'kids', icon: '🧸', name: 'Kids story', desc: 'Bedtime story in 3D', topic: 'A brave little turtle crosses the big pond', format: 'landscape', lengthSec: 60, tone: 'Friendly', style: '3d', character: 'a tiny green turtle with a red backpack', captionStyle: 'bold', mood: 'Acoustic happy' },
+  { id: 'explainer', icon: '🎓', name: 'Explainer', desc: 'Teach one idea clearly', topic: 'How solar panels turn sunlight into electricity', format: 'landscape', lengthSec: 90, tone: 'Professional', style: 'stock', captionStyle: 'minimal', mood: 'Corporate inspiring' },
+  { id: 'promo', icon: '🛍️', name: 'Product promo', desc: 'Sell it in 30 seconds', topic: 'Launching our handmade soy candles', format: 'portrait', lengthSec: 30, tone: 'Energetic', style: 'product', captionStyle: 'yellow', mood: 'Upbeat pop' },
+  { id: 'motivation', icon: '🔥', name: 'Motivation', desc: 'Short and inspiring', topic: 'Why small daily habits beat big goals', format: 'portrait', lengthSec: 30, tone: 'Calm', style: 'cinematic', captionStyle: 'bold', mood: 'Epic cinematic' },
+  { id: 'travel', icon: '✈️', name: 'Travel guide', desc: 'Show off a place', topic: '3 perfect days in Lisbon', format: 'landscape', lengthSec: 60, tone: 'Friendly', style: 'stock', captionStyle: 'minimal', mood: 'Acoustic happy' },
 ];
+
+// Visual styles. "Real footage" uses free stock video; the rest are AI-generated (fal.ai).
+const STYLES = [
+  { id: 'stock', name: 'Real footage', icon: '🎥', bg: 'linear-gradient(135deg,#2b5876,#4e4376)' },
+  { id: 'cinematic', name: 'Cinematic', icon: '🎬', bg: 'linear-gradient(135deg,#0f2027,#2c5364 55%,#d4a373)' },
+  { id: 'photoreal', name: 'Photo-real', icon: '📷', bg: 'linear-gradient(135deg,#3a6073,#a8c0ff)' },
+  { id: 'anime', name: 'Anime', icon: '🌸', bg: 'linear-gradient(135deg,#ff9a9e,#a18cd1)' },
+  { id: '3d', name: '3D cartoon', icon: '🧸', bg: 'linear-gradient(135deg,#f6d365,#fda085)' },
+  { id: 'storybook', name: 'Storybook', icon: '🎨', bg: 'linear-gradient(135deg,#f3c98b,#7fc8a9)' },
+  { id: 'comic', name: 'Comic', icon: '💥', bg: 'linear-gradient(135deg,#f9d423,#ff4e50)' },
+  { id: 'neon', name: 'Neon', icon: '🌃', bg: 'linear-gradient(135deg,#12c2e9,#c471ed 55%,#f64f59)' },
+  { id: 'product', name: 'Product ad', icon: '🛍️', bg: 'linear-gradient(135deg,#8e9eab,#eef2f3)' },
+];
+const isAI = (style) => style && style !== 'stock';
+
+const CAPTION_STYLES = [
+  { id: 'off', name: 'Off' },
+  { id: 'bold', name: 'Bold' },
+  { id: 'yellow', name: 'Yellow pop' },
+  { id: 'boxed', name: 'Boxed' },
+  { id: 'minimal', name: 'Minimal' },
+];
+const MOODS = ['Calm lo-fi', 'Upbeat pop', 'Epic cinematic', 'Acoustic happy', 'Corporate inspiring', 'Dark ambient'];
 
 const blankProject = () => ({
   topic: '',
@@ -40,6 +67,11 @@ const blankProject = () => ({
   scenes: [],
   voice: { mode: '' },
   captions: true,
+  captionStyle: 'bold',
+  style: 'stock',
+  character: '',
+  music: { mode: 'none', prompt: 'Calm lo-fi' },
+  seed: Math.floor(Math.random() * 1e6), // same seed for every AI picture keeps the look consistent
   visualsFor: '',
 });
 
@@ -53,6 +85,8 @@ const state = {
   job: null,
   video: null,
   searching: new Set(),
+  animating: new Map(), // sceneId -> {jobId, message}
+  auto: null, // one-click progress
 };
 
 const STORE = 'ai-video-studio:v1';
@@ -163,7 +197,7 @@ function render() {
     }
   }
   const c = state.status?.connections || {};
-  const n = ['elevenlabs', 'anthropic', 'pexels', 'pixabay', 'youtube'].filter((k) => c[k]?.connected).length;
+  const n = ['elevenlabs', 'anthropic', 'pexels', 'pixabay', 'fal', 'youtube'].filter((k) => c[k]?.connected).length;
   $('#conn-count').textContent = n ? `${n} ✓` : '';
   $('#conn-count').className = n ? 'pill ok' : 'pill';
 }
@@ -184,22 +218,52 @@ function shapeIcon(format) {
   return `<span class="shape" style="width:${Math.round(w * k)}px;height:${Math.round(h * k)}px"></span>`;
 }
 
+function styleGrid(compact) {
+  const p = P();
+  return `<div class="styles ${compact ? 'compact' : ''}">${STYLES.map((st) => `
+    <button class="style ${p.style === st.id ? 'on' : ''}" data-action="style" data-v="${st.id}" aria-pressed="${p.style === st.id}">
+      <span class="swatch" style="background:${st.bg}">${st.icon}${isAI(st.id) ? '<span class="ai-tag">AI</span>' : ''}</span>
+      <span class="style-name">${st.name}</span>
+    </button>`).join('')}</div>`;
+}
+
+function falNote() {
+  if (!isAI(P().style) || conn('fal')) return '';
+  return `<p class="notice small">AI styles need a <b>fal.ai</b> key (pay as you go, a few cents per picture). <button class="link" data-action="open-connections">Connect fal.ai</button>. Until then you'll get real footage instead.</p>`;
+}
+
 function viewIdea() {
   const p = P();
   const claude = conn('anthropic');
   return `
   <div class="hero">
-    <h1>Make a video in minutes</h1>
-    <p>Describe your idea. We'll write the script, add a voice and find free footage.</p>
+    <h1>What do you want to make?</h1>
+    <p>Pick a template or type an idea. One tap makes the whole video, and you can tweak anything after.</p>
+  </div>
+  <div class="templates" role="list">
+    ${TEMPLATES.map((t) => `
+      <button class="template ${p.template === t.id ? 'on' : ''}" data-action="template" data-v="${t.id}" role="listitem">
+        <span class="t-icon" style="background:${STYLES.find((x) => x.id === t.style).bg}">${t.icon}</span>
+        <span class="t-name">${t.name}</span><span class="t-desc">${t.desc}</span>
+      </button>`).join('')}
   </div>
   <div class="card stack">
     <div>
-      <label class="lbl" for="topic">What's your video about?</label>
+      <label class="lbl" for="topic">Your idea</label>
       <textarea id="topic" class="input topic" data-bind="topic" data-focus="topic" placeholder="e.g. 5 surprising facts about octopuses">${esc(p.topic)}</textarea>
-      <div class="chips" style="margin-top:10px">
-        ${EXAMPLES.map((e) => `<button class="chip example" data-action="example" data-v="${esc(e)}">${esc(e)}</button>`).join('')}
-      </div>
     </div>
+
+    <div class="section">
+      <label class="lbl">Style</label>
+      ${styleGrid()}
+      ${falNote()}
+    </div>
+
+    ${isAI(p.style) ? `
+    <div class="section">
+      <label class="lbl" for="character">Main character <span class="muted small">(optional, keeps them looking the same in every scene)</span></label>
+      <input id="character" class="input" data-bind="character" data-focus="character" value="${esc(p.character)}" placeholder="e.g. a small orange cat with a blue scarf" />
+    </div>` : ''}
 
     <div class="section">
       <label class="lbl">Where will you post it?</label>
@@ -228,36 +292,121 @@ function viewIdea() {
       <textarea id="own" class="input" rows="8" data-bind="ownScript" data-focus="own" placeholder="Paste the full voiceover text here. We'll split it into scenes and pick visuals.">${esc(p.ownScript)}</textarea>
     </div>` : ''}
 
-    <div class="actions">
+    <div class="make">
+      <button class="btn primary big make-btn" data-action="make" ${state.auto || state.busy.script ? 'disabled' : ''}>⚡ Make my video</button>
+      <p class="muted small center" style="margin:0">Writes the script, ${conn('elevenlabs') ? 'records your ElevenLabs voice, ' : ''}${isAI(p.style) && conn('fal') ? 'creates AI pictures' : 'finds video clips'}, adds music${conn('elevenlabs') ? '' : ' if you have it'} and renders it.</p>
+    </div>
+    <div class="actions" style="margin-top:4px">
       <button class="link" data-action="toggle-own">${p.showOwn ? '← Let AI write it instead' : 'I already have a script'}</button>
       ${p.showOwn
-        ? `<button class="btn primary big" data-action="use-own" ${state.busy.script ? 'disabled' : ''}>${spin('script', 'Use my script →', 'Splitting into scenes…')}</button>`
-        : `<button class="btn primary big" data-action="write" ${state.busy.script ? 'disabled' : ''}>${spin('script', '✨ Write my script', 'Writing your script…')}</button>`}
+        ? `<button class="btn" data-action="use-own" ${state.busy.script ? 'disabled' : ''}>${spin('script', 'Step by step with my script →', 'Splitting into scenes…')}</button>`
+        : `<button class="btn" data-action="write" ${state.busy.script ? 'disabled' : ''}>${spin('script', 'Step by step →', 'Writing your script…')}</button>`}
     </div>
     ${!claude ? `<p class="notice small">No AI writer connected yet, so you'll get a <b>starter template</b> to edit. <button class="link" data-action="open-connections">Connect Claude</button> for real AI-written scripts.</p>` : `<p class="muted small center">✓ Scripts are written by Claude</p>`}
   </div>`;
 }
 
-async function generateScript(useOwn) {
+async function generateScript(useOwn, { auto = false } = {}) {
   const p = P();
   if (!useOwn && !p.topic.trim()) return toast('Tell me what your video is about first 🙂', 'err');
   if (useOwn && !p.ownScript.trim()) return toast('Paste your script first.', 'err');
-  if (p.scenes.length && !confirm('Replace your current script with a new one?')) return;
-  await busy('script', async () => {
-    const out = await api('/api/script', { json: { topic: p.topic, tone: p.tone, lengthSec: p.lengthSec, format: p.format, script: useOwn ? p.ownScript : '' } });
+  if (!auto && p.scenes.length && !confirm('Replace your current script with a new one?')) return;
+  return busy('script', async () => {
+    const out = await api('/api/script', { json: { topic: p.topic, tone: p.tone, lengthSec: p.lengthSec, format: p.format, script: useOwn ? p.ownScript : '', style: p.style, character: p.character } });
     Object.assign(p, {
       title: out.title,
       description: out.description,
       hashtags: out.hashtags || [],
       writer: out.writer,
-      scenes: out.scenes.map((s) => ({ id: uid(), text: s.text, keywords: s.keywords, media: null, alts: [] })),
+      scenes: out.scenes.map((s) => ({ id: uid(), text: s.text, keywords: s.keywords, imagePrompt: s.imagePrompt || s.text, media: null, alts: [] })),
       visualsFor: '',
     });
     if (p.voice.mode === 'elevenlabs') p.voice = { ...p.voice, segments: [], previewUrl: '' };
-    state.step = 1;
+    if (!auto) state.step = 1;
     save();
-    window.scrollTo({ top: 0 });
+    if (!auto) window.scrollTo({ top: 0 });
+    return true;
   });
+}
+
+// ---------------------------------------------------------------- One click: idea -> finished video
+const AUTO_STAGES = ['Writing the script', 'Recording the voice', 'Creating the visuals', 'Adding music', 'Rendering the video'];
+
+function renderAuto() {
+  const a = state.auto;
+  if (!a) return;
+  $('#modal').innerHTML = `
+    <div class="auto">
+      <div class="big-emoji">🎬</div>
+      <h2>Making your video</h2>
+      <ol class="auto-stages">
+        ${AUTO_STAGES.map((name, i) => {
+          const st = a.skipped.includes(i) ? 'skip' : i < a.stage ? 'done' : i === a.stage ? 'now' : '';
+          return `<li class="${st}"><span class="mark">${st === 'done' ? '✓' : st === 'skip' ? '–' : st === 'now' ? '<span class="spinner"></span>' : ''}</span>${name}${a.notes[i] ? `<span class="muted small"> · ${esc(a.notes[i])}</span>` : ''}</li>`;
+        }).join('')}
+      </ol>
+      <p class="muted small">You can tweak every step afterwards.</p>
+    </div>`;
+}
+
+function autoStage(i, note) {
+  state.auto.stage = i;
+  if (note) state.auto.notes[i] = note;
+  renderAuto();
+}
+function autoSkip(i, note) {
+  state.auto.skipped.push(i);
+  state.auto.notes[i] = note;
+  renderAuto();
+}
+
+async function makeItForMe() {
+  const p = P();
+  const own = !!(p.showOwn && p.ownScript?.trim());
+  if (!own && !p.topic.trim()) return toast('Type an idea or pick a template first 🙂', 'err');
+  if (p.scenes.length && !confirm('Make a brand new video from this idea? Your current script will be replaced.')) return;
+  state.auto = { stage: 0, notes: {}, skipped: [] };
+  renderAuto();
+  showModal();
+  try {
+    if (!(await generateScript(own, { auto: true }))) throw new Error('stopped');
+
+    autoStage(1);
+    if (conn('elevenlabs')) {
+      if (p.voice.mode !== 'elevenlabs') p.voice = (p.voiceMemory?.elevenlabs?.mode === 'elevenlabs' && p.voiceMemory.elevenlabs) || { mode: 'elevenlabs', segments: [] };
+      await loadVoices(true);
+      applyVoiceDefaults();
+      await generateVoice({ quiet: true });
+      if (!voiceReady()) { p.voice = { mode: 'none' }; autoSkip(1, 'skipped, the voice could not be made'); }
+    } else if (p.voice.mode === 'upload' && p.voice.file) {
+      state.auto.notes[1] = 'your recording';
+    } else {
+      p.voice = { mode: 'none' };
+      autoSkip(1, 'no voice connected, captions only');
+    }
+
+    autoStage(2);
+    p.visualsFor = p.format;
+    if (isAI(p.style) && conn('fal')) await aiAllScenes();
+    else await autoFindVisuals(true);
+
+    autoStage(3);
+    if (p.music?.mode === 'none' && conn('elevenlabs')) {
+      p.music = { ...p.music, prompt: p.music.prompt || 'Calm lo-fi' };
+      if (!(await makeMusic({ quiet: true }))) autoSkip(3, 'skipped');
+    } else if (p.music?.file) state.auto.notes[3] = 'your music';
+    else autoSkip(3, 'connect ElevenLabs for AI music');
+
+    autoStage(4);
+    state.auto = null;
+    closeOverlays();
+    await createVideo();
+  } catch (err) {
+    state.auto = null;
+    closeOverlays();
+    if (err.message !== 'stopped') toast(err.message, 'err');
+    go(P().scenes.length ? 1 : 0);
+  }
 }
 
 // --- Step 2: Script ----------------------------------------------------------
@@ -283,7 +432,9 @@ function viewScript() {
           <span class="num">${i + 1}</span>
           <div>
             <textarea class="input" rows="2" data-scene-text="${s.id}" data-focus="t-${s.id}" placeholder="What should the narrator say?">${esc(s.text)}</textarea>
-            <div class="kw" title="What to search for in the free stock library">🎬 Visual: <input data-scene-kw="${s.id}" data-focus="k-${s.id}" value="${esc(s.keywords)}" placeholder="e.g. ocean waves" /></div>
+            ${isAI(p.style)
+              ? `<div class="kw" title="What the AI picture should show">🖼️ Picture: <input data-scene-ip="${s.id}" data-focus="i-${s.id}" value="${esc(s.imagePrompt || '')}" placeholder="Describe the picture" /></div>`
+              : `<div class="kw" title="What to search for in the free stock library">🎬 Visual: <input data-scene-kw="${s.id}" data-focus="k-${s.id}" value="${esc(s.keywords)}" placeholder="e.g. ocean waves" /></div>`}
           </div>
           <div class="scene-tools">
             <button class="icon-btn" title="Move up" data-action="move" data-id="${s.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -477,7 +628,7 @@ function playPreview(url) {
   previewAudio.play().catch(() => toast('Could not play the preview.', 'err'));
 }
 
-async function generateVoice() {
+async function generateVoice({ quiet = false } = {}) {
   const p = P();
   if (p.scenes.some((s) => !s.text.trim())) return toast('One of your scenes is empty. Add words or delete it.', 'err');
   await busy('voice', async () => {
@@ -487,6 +638,7 @@ async function generateVoice() {
     p.voice = { ...p.voice, segments: out.segments, previewUrl: out.previewUrl };
     save();
     api('/api/elevenlabs/account').then((el) => { state.el = el; render(); }).catch(() => {});
+    if (quiet) return;
     toast('Voiceover ready 🎉', 'ok');
   });
 }
@@ -511,15 +663,8 @@ function sourceLabel() {
   return list.length ? `${list.join(' + ')} (free videos & photos)` : 'Openverse (free Creative Commons photos)';
 }
 
-function viewVisuals() {
-  const p = P();
-  const tl = computeTimeline(p.scenes, p.voice);
-  const s = state.status?.sources || {};
-  const captionsOk = state.status?.ffmpeg?.captions !== false;
+function pexelsCard() {
   return `
-  <div class="hero"><h1>Pick your visuals</h1><p>Every scene gets a free clip automatically. Swap any you don't love.</p></div>
-  <div class="card">
-    ${!s.pexels && !s.pixabay ? `
     <div class="connect-card" style="margin-bottom:16px">
       <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
         <span class="conn-icon">📹</span>
@@ -534,39 +679,117 @@ function viewVisuals() {
         <input class="input" type="password" name="key" placeholder="Paste your Pexels API key" autocomplete="off" aria-label="Pexels API key" />
         <button class="btn primary" ${state.busy['key-pexels'] ? 'disabled' : ''}>${spin('key-pexels', 'Connect', '')}</button>
       </form>
-    </div>` : ''}
+    </div>`;
+}
+
+function falCard() {
+  return `
+    <div class="connect-card" style="margin-bottom:16px">
+      <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
+        <span class="conn-icon">🪄</span>
+        <div style="min-width:0"><h3 style="margin:0">Turn on AI pictures and AI video clips</h3>
+        <p class="muted small" style="margin:2px 0 0">fal.ai runs top image and video models (FLUX for pictures, Kling for moving clips). Pay as you go: pictures cost a fraction of a cent, a 5 second clip costs more and takes a minute or two.</p></div>
+      </div>
+      <ol class="small steps-list">
+        <li><a class="btn small" href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener">Get my fal.ai key ↗</a></li>
+        <li>Add a little credit in fal.ai's billing page, copy the key and paste it here.</li>
+      </ol>
+      <form class="key-row" data-form="key" data-name="fal">
+        <input class="input" type="password" name="key" placeholder="Paste your fal.ai key" autocomplete="off" aria-label="fal.ai key" />
+        <button class="btn primary" ${state.busy['key-fal'] ? 'disabled' : ''}>${spin('key-fal', 'Connect', '')}</button>
+      </form>
+    </div>`;
+}
+
+function viewVisuals() {
+  const p = P();
+  const tl = computeTimeline(p.scenes, p.voice);
+  const s = state.status?.sources || {};
+  const ai = isAI(p.style) && conn('fal');
+  const pictures = p.scenes.filter((sc) => sc.media?.type === 'image').length;
+  const busyAny = state.searching.size || state.animating.size;
+  return `
+  <div class="hero"><h1>Pick your visuals</h1><p>${ai ? 'Every scene gets an AI picture in your style. Bring any of them to life as a moving clip.' : 'Every scene gets a free video clip automatically. Swap any you don\'t love.'}</p></div>
+  <div class="card">
+    <label class="lbl">Style</label>
+    ${styleGrid(true)}
+    <div style="margin-top:14px"></div>
+    ${isAI(p.style) && !conn('fal') ? falCard() : ''}
+    ${!ai && !s.pexels && !s.pixabay ? pexelsCard() : ''}
     <div class="row spread" style="margin-bottom:16px">
-      <span class="muted small">Source: <b>${sourceLabel()}</b></span>
-      <button class="btn small" data-action="refind" ${state.searching.size ? 'disabled' : ''}>🔄 Find all again</button>
+      <span class="muted small">Source: <b>${ai ? `AI · ${STYLES.find((x) => x.id === p.style).name}` : sourceLabel()}</b></span>
+      <div class="row">
+        ${ai
+          ? `<button class="btn small" data-action="ai-all" ${busyAny ? 'disabled' : ''}>✨ New AI pictures for all</button>
+             <button class="btn small" data-action="animate-all" ${busyAny || !pictures ? 'disabled' : ''} title="Turns every picture into a 5 second moving clip">🎬 Animate all (${pictures})</button>`
+          : `<button class="btn small" data-action="refind" ${busyAny ? 'disabled' : ''}>🔄 Find all again</button>`}
+      </div>
     </div>
     <div class="board">
       ${p.scenes.map((sc, i) => tile(sc, i, tl.items[i])).join('')}
     </div>
-    <div class="section row spread">
-      <label class="toggle" ${captionsOk ? '' : 'title="Your ffmpeg build cannot draw captions"'}>
-        <input type="checkbox" data-action="captions" ${p.captions && captionsOk ? 'checked' : ''} ${captionsOk ? '' : 'disabled'} />
-        <span class="sw"></span> Show captions on the video
-      </label>
-      <span class="muted small">Total length <b>${formatTime(tl.total)}</b> · ${FORMATS[p.format].label}</span>
-    </div>
+    ${finishingTouches()}
     <div class="actions">
       <button class="btn ghost" data-action="step" data-i="2">← Back</button>
+      <span class="muted small">Total <b>${formatTime(tl.total)}</b> · ${FORMATS[p.format].label}</span>
       <button class="btn primary big" data-action="create" ${state.searching.size || state.busy.render ? 'disabled' : ''}>🎬 Create my video</button>
     </div>
   </div>`;
 }
 
+function finishingTouches() {
+  const p = P();
+  const captionsOk = state.status?.ffmpeg?.captions !== false;
+  const cs = p.captions === false ? 'off' : p.captionStyle || 'bold';
+  const m = p.music || { mode: 'none' };
+  return `
+    <div class="touches">
+      <div>
+        <label class="lbl">Captions</label>
+        ${captionsOk ? `<div class="cap-styles">${CAPTION_STYLES.map((c) => `
+          <button class="cap ${cs === c.id ? 'on' : ''}" data-action="caption-style" data-v="${c.id}">
+            <span class="cap-preview cap-${c.id}"><span>${c.id === 'off' ? 'No captions' : 'Hello world'}</span></span><span class="small">${c.name}</span>
+          </button>`).join('')}</div>` : '<p class="muted small">This copy of ffmpeg cannot draw captions.</p>'}
+      </div>
+      <div>
+        <label class="lbl">Background music</label>
+        <div class="chips">
+          <button class="chip ${m.mode === 'none' ? 'on' : ''}" data-action="music-mode" data-v="none">None</button>
+          <button class="chip ${m.mode === 'ai' ? 'on' : ''}" data-action="music-mode" data-v="ai">✨ AI music</button>
+          <button class="chip ${m.mode === 'upload' ? 'on' : ''}" data-action="music-mode" data-v="upload">⬆️ My music</button>
+        </div>
+        ${m.mode === 'ai' ? (conn('elevenlabs') ? `
+          <div class="chips" style="margin-top:10px">${MOODS.map((x) => `<button class="chip example ${m.prompt === x ? 'on' : ''}" data-action="mood" data-v="${x}">${x}</button>`).join('')}</div>
+          <div class="key-row" style="margin-top:10px">
+            <input class="input" data-music-prompt data-focus="music-prompt" value="${esc(m.prompt || '')}" placeholder="Describe the music, e.g. warm acoustic guitar" aria-label="Music description" />
+            <button class="btn primary" data-action="make-music" ${state.busy.music ? 'disabled' : ''}>${spin('music', m.file ? 'Make new' : 'Make music', 'Composing…')}</button>
+          </div>
+          <p class="muted tiny" style="margin-top:6px">Made by Eleven Music with your ElevenLabs account. Needs a plan that includes music.</p>`
+          : `<p class="notice small" style="margin-top:10px">AI music uses your ElevenLabs account. <button class="link" data-action="open-connections">Connect ElevenLabs</button> or upload your own music.</p>`) : ''}
+        ${m.mode === 'upload' && !m.file ? `<button class="btn small" style="margin-top:10px" data-action="pick-music-file">Choose a music file</button>` : ''}
+        ${m.file && m.mode !== 'none' ? `
+          <div class="notice small" style="margin-top:10px">🎵 <b>${esc(m.name || 'Music')}</b> · ${formatTime(m.duration)} ${m.mode === 'upload' ? '<button class="link" data-action="pick-music-file">Replace</button>' : ''}</div>
+          <audio controls src="${esc(m.url)}" style="margin-top:8px"></audio>
+          <div class="chips" style="margin-top:8px"><span class="muted small" style="align-self:center">Volume</span>${[['Low', 0.15], ['Medium', 0.3], ['High', 0.5]].map(([n, v]) => `<button class="chip ${(m.volume || 0.3) === v ? 'on' : ''}" data-action="music-volume" data-v="${v}">${n}</button>`).join('')}</div>
+          <p class="muted tiny" style="margin-top:6px">Music dips automatically while the voice is speaking.</p>` : ''}
+      </div>
+    </div>`;
+}
+
 function tile(sc, i, t) {
   const m = sc.media;
-  const loading = state.searching.has(sc.id);
+  const anim = state.animating.get(sc.id);
+  const loading = state.searching.has(sc.id) || !!anim;
   const fmt = P().format;
+  const fal = conn('fal');
   const bg = m?.thumb ? `style="background-image:url('${esc(m.thumb)}')"` : '';
   return `
   <div class="tile">
     <div class="thumb ${fmt} ${loading ? 'loading' : ''} ${!m && !loading ? 'empty' : ''}" ${loading ? '' : bg} data-hover="${m?.type === 'video' ? esc(m.url) : ''}">
-      <span class="badge">${i + 1}${m ? (m.type === 'video' ? ' · ▶ Video' : ' · Photo') : ''}</span>
+      <span class="badge">${i + 1}${m ? (m.type === 'video' ? ' · ▶ Video' : ' · Picture') : ''}${m?.source === 'ai' ? ' · AI' : ''}</span>
+      ${anim ? `<span class="anim-msg small">🎬 ${esc(anim.message || 'Animating…')}<br><span class="tiny">usually 1 to 3 minutes</span></span>` : ''}
       ${t ? `<span class="badge dur">${t.duration.toFixed(1)}s</span>` : ''}
-      ${!m && !loading ? `<span class="small" style="padding:12px;text-align:center">${sc.searched ? 'Nothing found.<br>A colour background will be used.' : ''}</span>` : ''}
+      ${!m && !loading ? `<span class="small" style="padding:12px;text-align:center">${sc.searched ? 'Nothing yet.<br>A colour background will be used.' : ''}</span>` : ''}
       ${m?.type === 'video' && !m.thumb ? '<span style="font-size:30px">▶</span>' : ''}
     </div>
     <div class="tile-body">
@@ -576,6 +799,8 @@ function tile(sc, i, t) {
         <button class="btn small" data-action="swap" data-id="${sc.id}" ${loading || (sc.alts || []).length < 2 ? 'disabled' : ''}>🔀 Swap</button>
         <button class="btn small" data-action="choose" data-id="${sc.id}">🔍 Choose</button>
         <button class="btn small" data-action="upload-media" data-id="${sc.id}">⬆️ Upload</button>
+        ${fal ? `<button class="btn small" data-action="ai-one" data-id="${sc.id}" ${loading ? 'disabled' : ''}>✨ AI picture</button>` : ''}
+        ${fal && m?.type === 'image' ? `<button class="btn small" data-action="animate" data-id="${sc.id}" ${loading ? 'disabled' : ''}>🎬 Animate</button>` : ''}
       </div>
     </div>
   </div>`;
@@ -620,6 +845,7 @@ async function autoFindVisuals(force) {
   const key = `${p.format}`;
   if (p.visualsFor !== key) force = true; // format changed: orientation of clips is wrong
   p.visualsFor = key;
+  if (isAI(p.style) && conn('fal')) return aiAllScenes(force);
   const todo = p.scenes.filter((s) => force ? s.media?.source !== 'upload' : !s.media && !s.searched);
   if (force) todo.forEach((s) => { s.media = null; s.searched = false; });
   // 3 at a time keeps the APIs happy.
@@ -632,6 +858,106 @@ async function autoFindVisuals(force) {
     }
   }));
   if (problems.length) toast(`Couldn't search the free media library for ${problems.length} scene${problems.length > 1 ? 's' : ''}: ${problems[0]}`, 'err');
+}
+
+// ---------------------------------------------------------------- AI pictures & clips (fal.ai)
+async function aiImageFor(sc, quiet) {
+  const p = P();
+  state.searching.add(sc.id);
+  render();
+  try {
+    sc.media = await api('/api/ai/image', { json: { prompt: sc.imagePrompt || sc.text, style: p.style, character: p.character, format: p.format, seed: p.seed } });
+    sc.searched = true;
+    save();
+  } catch (err) {
+    sc.searched = true;
+    if (quiet) return err.message;
+    toast(err.message, 'err');
+  } finally {
+    state.searching.delete(sc.id);
+    render();
+  }
+}
+
+async function aiAllScenes(force = true) {
+  const p = P();
+  const todo = p.scenes.filter((s) => (force ? s.media?.source !== 'upload' : !s.media));
+  const queue = [...todo];
+  const problems = [];
+  await Promise.all([0, 1, 2].map(async () => {
+    while (queue.length) {
+      const problem = await aiImageFor(queue.shift(), true);
+      if (problem) problems.push(problem);
+    }
+  }));
+  if (problems.length) toast(`${problems.length} picture${problems.length > 1 ? 's' : ''} could not be made: ${problems[0]}`, 'err');
+}
+
+async function animateScene(sc) {
+  if (!sc?.media || sc.media.type !== 'image') return toast('Pick or make a picture for this scene first.', 'err');
+  const p = P();
+  const dur = computeTimeline(p.scenes, p.voice).items.find((t) => t.id === sc.id)?.duration || 5;
+  try {
+    const { jobId } = await api('/api/ai/animate', { json: { image: sc.media, prompt: sc.imagePrompt || sc.text, style: p.style, character: p.character, seconds: dur > 6 ? 10 : 5 } });
+    state.animating.set(sc.id, { jobId, message: 'Starting…' });
+    render();
+    pollAnimation(sc.id);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+function pollAnimation(sceneId) {
+  setTimeout(async () => {
+    const a = state.animating.get(sceneId);
+    if (!a) return;
+    try {
+      const job = await api(`/api/ai/jobs/${a.jobId}`);
+      const sc = P().scenes.find((s) => s.id === sceneId);
+      if (job.status === 'done') {
+        state.animating.delete(sceneId);
+        if (sc) { sc.media = job.item; save(); }
+        toast(`Scene ${P().scenes.indexOf(sc) + 1} is moving now 🎬`, 'ok');
+      } else if (job.status === 'error') {
+        state.animating.delete(sceneId);
+        toast(job.error, 'err');
+      } else {
+        a.message = job.message;
+        pollAnimation(sceneId);
+      }
+    } catch (err) {
+      state.animating.delete(sceneId);
+      toast(err.message, 'err');
+    }
+    if (STEPS[state.step].key === 'visuals') render();
+  }, 3000);
+}
+
+// ---------------------------------------------------------------- music
+async function makeMusic({ quiet = false } = {}) {
+  const p = P();
+  const total = computeTimeline(p.scenes, p.voice).total;
+  let ok = false;
+  await busy('music', async () => {
+    const out = await api('/api/music/elevenlabs', { json: { prompt: p.music?.prompt || 'Calm lo-fi', seconds: Math.ceil(total) + 2 } });
+    p.music = { ...p.music, mode: 'ai', ...out, volume: p.music?.volume || 0.3 };
+    save();
+    ok = true;
+    if (!quiet) toast('Music ready 🎵', 'ok');
+  });
+  return ok;
+}
+
+async function uploadMusic(file) {
+  if (!file) return;
+  await busy('music', async () => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const out = await api('/api/voice/upload', { method: 'POST', body: fd });
+    P().music = { ...P().music, mode: 'upload', ...out, volume: P().music?.volume || 0.3 };
+    save();
+    toast('Music added ✓', 'ok');
+  });
 }
 
 function swap(id) {
@@ -831,9 +1157,12 @@ async function createVideo() {
     toast('Finish the Voice step first.', 'err');
     return go(2);
   }
+  if (state.animating.size) return toast('Wait for the clips that are still animating, then try again.', 'err');
   await busy('render', async () => {
     const project = {
-      title: p.title, description: p.description, hashtags: p.hashtags, format: p.format, captions: p.captions,
+      title: p.title, description: p.description, hashtags: p.hashtags, format: p.format,
+      captions: p.captions !== false && p.captionStyle !== 'off', captionStyle: p.captionStyle,
+      music: p.music?.mode !== 'none' && p.music?.file ? { file: p.music.file, volume: p.music.volume } : null,
       voice: p.voice,
       scenes: p.scenes.map(({ id, text, keywords, media }) => ({ id, text, keywords, media })),
     };
@@ -894,6 +1223,7 @@ const CONNECTIONS = [
   { group: 'Voice', name: 'elevenlabs', icon: '🎙️', title: 'ElevenLabs', desc: 'Realistic AI voiceovers', link: 'https://elevenlabs.io/app/settings/api-keys', linkText: 'Get your API key' },
   { group: 'Script writing', name: 'anthropic', icon: '✨', title: 'Claude', desc: 'Writes your scripts, titles and descriptions', link: 'https://console.anthropic.com/settings/keys', linkText: 'Get an API key' },
   { group: 'Free stock media', name: 'pexels', icon: '📹', title: 'Pexels', desc: 'Real HD video clips & photos. Recommended', link: 'https://www.pexels.com/api/new/', linkText: 'Get a free key' },
+  { group: 'AI pictures & clips', name: 'fal', icon: '🪄', title: 'fal.ai', desc: 'AI pictures (FLUX) and AI video clips (Kling). Pay as you go', link: 'https://fal.ai/dashboard/keys', linkText: 'Get your fal.ai key' },
   { group: 'Free stock media', name: 'pixabay', icon: '🌄', title: 'Pixabay', desc: 'Free videos & photos', link: 'https://pixabay.com/api/docs/#api_search_images', linkText: 'Get a free key (shown once you log in)' },
 ];
 
@@ -1044,6 +1374,43 @@ const actions = {
   tone: (el) => { P().tone = el.dataset.v; save(); render(); },
   'toggle-own': () => { P().showOwn = !P().showOwn; save(); render(); },
   write: () => generateScript(false),
+  make: () => makeItForMe(),
+  template: (el) => {
+    const t = TEMPLATES.find((x) => x.id === el.dataset.v);
+    if (!t) return;
+    Object.assign(P(), { template: t.id, topic: t.topic, format: t.format, lengthSec: t.lengthSec, tone: t.tone, style: t.style, character: t.character || '', captionStyle: t.captionStyle, captions: true, music: { ...(P().music || {}), prompt: t.mood }, showOwn: false });
+    save();
+    render();
+    toast(`${t.name} template loaded. Change the idea, or tap Make my video.`);
+  },
+  style: (el) => {
+    const p = P();
+    if (p.style === el.dataset.v) return;
+    const wasAI = isAI(p.style);
+    p.style = el.dataset.v;
+    save();
+    render();
+    // On the Visuals step, switching style re-does the scenes (keeps your uploads).
+    if (STEPS[state.step].key === 'visuals' && (wasAI || isAI(p.style))) {
+      if (isAI(p.style) && conn('fal')) aiAllScenes(true);
+      else if (!isAI(p.style)) autoFindVisuals(true);
+    }
+  },
+  'ai-one': (el) => aiImageFor(P().scenes.find((s) => s.id === el.dataset.id)),
+  'ai-all': () => aiAllScenes(true),
+  animate: (el) => animateScene(P().scenes.find((s) => s.id === el.dataset.id)),
+  'animate-all': () => {
+    const pics = P().scenes.filter((s) => s.media?.type === 'image' && !state.animating.has(s.id));
+    if (!pics.length) return;
+    if (!confirm(`Animate ${pics.length} picture${pics.length > 1 ? 's' : ''}? Each clip takes 1 to 3 minutes and is billed by fal.ai.`)) return;
+    pics.forEach((sc) => animateScene(sc));
+  },
+  'caption-style': (el) => { P().captionStyle = el.dataset.v; P().captions = el.dataset.v !== 'off'; save(); render(); },
+  'music-mode': (el) => { P().music = { ...(P().music || {}), mode: el.dataset.v }; if (el.dataset.v === 'none') P().music.file = ''; save(); render(); if (el.dataset.v === 'upload' && !P().music.file) $('#file-music').click(); },
+  mood: (el) => { P().music = { ...P().music, prompt: el.dataset.v }; save(); render(); },
+  'make-music': () => makeMusic(),
+  'pick-music-file': () => $('#file-music').click(),
+  'music-volume': (el) => { P().music.volume = Number(el.dataset.v); save(); render(); },
   'use-own': () => generateScript(true),
   rewrite: () => (P().ownScript && P().showOwn ? generateScript(true) : generateScript(false)),
   'add-scene': () => {
@@ -1152,6 +1519,7 @@ document.addEventListener('change', (e) => {
   if (el.matches('[data-model]')) { P().voice.modelId = el.value; save(); render(); }
   if (el.id === 'file-voice') { uploadVoice(el.files[0]); el.value = ''; }
   if (el.id === 'file-media') { uploadMedia(el.files[0]); el.value = ''; }
+  if (el.id === 'file-music') { uploadMusic(el.files[0]); el.value = ''; }
 });
 
 document.addEventListener('keydown', (e) => {
@@ -1175,6 +1543,11 @@ document.addEventListener('input', (e) => {
     clearTimeout(statsTimer);
     statsTimer = setTimeout(() => { const s = $('#script-stats'); if (s) s.innerHTML = scriptStats(); }, 200);
   }
+  if (el.dataset.sceneIp) {
+    const sc = p.scenes.find((s) => s.id === el.dataset.sceneIp);
+    if (sc) sc.imagePrompt = el.value;
+  }
+  if (el.matches('[data-music-prompt]')) p.music = { ...p.music, prompt: el.value };
   if (el.dataset.sceneKw) {
     const sc = p.scenes.find((s) => s.id === el.dataset.sceneKw);
     if (sc && sc.keywords !== el.value) {

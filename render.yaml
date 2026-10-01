@@ -19,3 +19,5 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY # optional: Claude writes your scripts
         sync: false
+      - key: FAL_KEY # optional: AI images and AI video clips from fal.ai
+        sync: false
