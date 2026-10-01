@@ -10,6 +10,30 @@ Make a narrated video in five simple steps, right on your computer:
 
 Your work is saved automatically in the browser, so a refresh never loses anything.
 
+## Use it on your phone
+
+GitHub only shows the code. To use the app on your phone, it has to run somewhere your phone can reach. Pick one:
+
+**Option A: free cloud link (works anywhere).**
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dwuco/helloworld/tree/feature/ai-video-studio)
+
+1. Tap the button and sign in to Render with your GitHub account (free).
+2. Render asks for a few values. Make up an **APP_PASSWORD**. Paste your ElevenLabs and Pexels keys now, or later inside the app.
+3. Wait for the first build (about 3 minutes), then open the `https://….onrender.com` link on your phone and sign in with your password.
+
+Good to know about Render's free plan: the app sleeps after 15 minutes without use and takes about a minute to wake up. Its storage is wiped on every restart, so download finished videos right away. Keys you entered as Render settings are kept; keys pasted inside the app are not.
+
+**Option B: your computer on the same Wi-Fi.**
+
+```bash
+APP_PASSWORD=pick-something npm start
+```
+
+The terminal prints the address to open on your phone, like `http://192.168.1.20:3000`. On Windows PowerShell, run `$env:APP_PASSWORD="pick-something"; npm start` instead.
+
+Without `APP_PASSWORD` the app only accepts connections from the computer it runs on, and it refuses to start on a public address, because anyone who could reach it could spend your API credits.
+
 ## Phone version
 
 `mobile/index.html` is a pocket edition that runs entirely in the phone's browser as a claude.ai page. Claude writes the script through your claude.ai account, so no API keys are needed. You add your own recording and camera-roll photos or clips. The video is recorded on the phone itself as MP4 (WebM on some Android browsers) and saved through the page's save prompt.
@@ -44,11 +68,15 @@ Everything works without any accounts, so you can test the whole flow first:
 
 Click **Connections** in the top right, paste a key and press **Connect**. Each key is checked before it is saved.
 
+**ElevenLabs:** ElevenLabs doesn't offer a "Sign in with ElevenLabs" button for other apps, so an API key from your own account is how the app connects. Once connected, the Voice step shows your name, plan and characters left, lists your own and cloned voices first, and lets you pick the voice model (for example Multilingual v2 for the most natural narration, or Flash for speed and lower cost). When creating the key, allow Text to Speech, Voices and User (read).
+
+**Real video clips:** with Pexels (or Pixabay) connected, every scene gets an HD stock video clip, preferring clips long enough to cover the scene without looping. Without either, scenes use Creative Commons photos.
+
 | Service | What it does | Where to get a key | Cost |
 | --- | --- | --- | --- |
-| ElevenLabs | AI voiceovers | [elevenlabs.io → API keys](https://elevenlabs.io/app/settings/api-keys) | Free tier available |
+| ElevenLabs | AI voiceovers with your own account, voices and clones | [elevenlabs.io → API keys](https://elevenlabs.io/app/settings/api-keys) | Free tier available |
 | Claude | Writes scripts | [console.anthropic.com → API keys](https://console.anthropic.com/settings/keys) | Pay per use, a script costs about a cent |
-| Pexels | Free stock videos + photos | [pexels.com/api](https://www.pexels.com/api/new/) | Free |
+| Pexels | Real HD stock **video clips** + photos (recommended) | [pexels.com/api](https://www.pexels.com/api/new/) | Free |
 | Pixabay | Free stock videos + photos | [pixabay.com/api/docs](https://pixabay.com/api/docs/) | Free |
 | Openverse | Free CC photos | Nothing to do, always on | Free |
 

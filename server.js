@@ -2,16 +2,31 @@ import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { ROOT, DIRS, getKey, setKey, setYouTube, publicStatus } from './lib/settings.js';
 import { ffmpegCapabilities, probe } from './lib/ffmpeg.js';
 import { writeScript, testClaude } from './lib/script.js';
-import { listVoices, generateVoiceover, testElevenLabs } from './lib/voice.js';
+import { listVoices, generateVoiceover, testElevenLabs, getAccount, listModels } from './lib/voice.js';
+import { installAuth } from './lib/auth.js';
 import { searchMedia, sourcesAvailable, testPexels, testPixabay } from './lib/media.js';
 import { startRender, getJob, listVideos, deleteVideo, videoFile } from './lib/render.js';
 import * as youtube from './lib/youtube.js';
 
 const app = express();
+const APP_PASSWORD = process.env.APP_PASSWORD || '';
+const PORT = Number(process.env.PORT) || 3000;
+// Local-only by default. With a password set, it listens on all addresses (phones on your Wi-Fi, cloud hosts).
+const HOST = process.env.HOST || (APP_PASSWORD ? '0.0.0.0' : '127.0.0.1');
+const LOCAL = ['127.0.0.1', 'localhost', '::1'].includes(HOST);
+if (!LOCAL && !APP_PASSWORD) {
+  console.error('\n  Refusing to start: HOST is public but APP_PASSWORD is not set.\n  Anyone could use your API keys. Set APP_PASSWORD and try again.\n');
+  process.exit(1);
+}
+
+app.set('trust proxy', 1); // correct https:// URLs behind hosts like Render
+app.get('/healthz', (req, res) => res.send('ok'));
+if (APP_PASSWORD) installAuth(app, APP_PASSWORD);
 app.use(express.json({ limit: '5mb' }));
 
 const wrap = (fn) => async (req, res) => {
@@ -34,7 +49,7 @@ const upload = multer({
 // --- Status & connections ----------------------------------------------------
 
 app.get('/api/status', wrap(async (req, res) => {
-  res.json({ connections: publicStatus(), ffmpeg: await ffmpegCapabilities(), sources: sourcesAvailable() });
+  res.json({ connections: publicStatus(), ffmpeg: await ffmpegCapabilities(), sources: sourcesAvailable(), signedIn: !!APP_PASSWORD });
 }));
 
 const testers = { elevenlabs: testElevenLabs, anthropic: testClaude, pexels: testPexels, pixabay: testPixabay };
@@ -73,12 +88,16 @@ app.post('/api/script', wrap(async (req, res) => {
 // --- Voice -------------------------------------------------------------------
 
 app.get('/api/voices', wrap(async (req, res) => res.json({ voices: await listVoices() })));
+app.get('/api/elevenlabs/account', wrap(async (req, res) => {
+  const [account, models] = await Promise.all([getAccount(), listModels()]);
+  res.json({ account, ...models });
+}));
 
 app.post('/api/voice/elevenlabs', wrap(async (req, res) => {
-  const { voiceId, scenes, reuse } = req.body;
+  const { voiceId, modelId, scenes, reuse } = req.body;
   if (!Array.isArray(scenes) || !scenes.length) throw new Error('Write a script first.');
   if (scenes.some((s) => !s.text?.trim())) throw new Error('One of your scenes is empty. Add some words or delete it.');
-  res.json(await generateVoiceover({ voiceId, scenes, reuse }));
+  res.json(await generateVoiceover({ voiceId, modelId, scenes, reuse }));
 }));
 
 app.post('/api/voice/upload', upload.single('file'), wrap(async (req, res) => {
@@ -184,11 +203,15 @@ app.use('/files/voice', express.static(DIRS.voice));
 app.use('/files/videos', express.static(DIRS.videos));
 app.use(express.static(path.join(ROOT, 'public')));
 
-const PORT = Number(process.env.PORT) || 3000;
-const HOST = process.env.HOST || '127.0.0.1';
 app.listen(PORT, HOST, async () => {
   const caps = await ffmpegCapabilities();
   console.log(`\n  🎬 AI Video Studio is running → http://localhost:${PORT}\n`);
+  if (!LOCAL) {
+    const lan = Object.values(os.networkInterfaces()).flat().filter((n) => n && n.family === 'IPv4' && !n.internal).map((n) => n.address);
+    console.log('  🔒 Password protected.');
+    lan.forEach((ip) => console.log(`  📱 On a phone on the same Wi-Fi, open → http://${ip}:${PORT}`));
+    console.log('');
+  }
   if (!caps.ok) console.log(`  ⚠️  ffmpeg problem: ${caps.error}\n`);
   if (!getKey('anthropic')) console.log('  Tip: connect Claude in the app for AI-written scripts.');
   if (!getKey('elevenlabs')) console.log('  Tip: connect ElevenLabs in the app for AI voiceovers.');

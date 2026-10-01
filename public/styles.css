@@ -269,3 +269,13 @@ audio { width: 100%; }
   .lib-item img { width: 80px; }
   .lib-item .row { grid-column: 1 / -1; }
 }
+
+/* Guided connect cards + account bar */
+.connect-card { border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--card)); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.steps-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.account { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--card); display: flex; flex-direction: column; gap: 4px; }
+.account.low { border-color: var(--err); }
+.num { font-variant-numeric: tabular-nums; }
+.voice-scroll { max-height: 420px; overflow: auto; padding: 2px; }
+.voice-scroll .voice-list { max-height: none; overflow: visible; }
+.key-row .input { min-width: 0; }

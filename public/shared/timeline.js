@@ -28,7 +28,8 @@ export function staleVoiceScenes(scenes, voice) {
   if (!voice || voice.mode !== 'elevenlabs') return [];
   return scenes.filter((s) => {
     const seg = (voice.segments || []).find((g) => g.sceneId === s.id);
-    return !seg || seg.text !== s.text.trim() || seg.voiceId !== voice.voiceId;
+    const modelChanged = voice.modelId && (seg?.modelId || voice.modelId) !== voice.modelId;
+    return !seg || seg.text !== s.text.trim() || seg.voiceId !== voice.voiceId || modelChanged;
   });
 }
 

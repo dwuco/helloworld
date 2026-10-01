@@ -18,19 +18,31 @@ ff('-f', 'lavfi', '-i', 'sine=frequency=330:duration=9', path.join(tmp, 'voice.w
 ff('-f', 'lavfi', '-i', 'testsrc2=s=1280x720:d=1', '-frames:v', '1', path.join(tmp, 'photo.jpg'));
 ff('-f', 'lavfi', '-i', 'testsrc=s=1280x720:d=2:r=25', '-pix_fmt', 'yuv420p', path.join(tmp, 'clip.mp4'));
 
-// Mock ElevenLabs: /voices and /text-to-speech/:id
+// Mock ElevenLabs: /voices, /user, /user/subscription, /models and /text-to-speech/:id
+const ttsModels = [];
+const json = (res, body) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 const mock = http.createServer((req, res) => {
   if (req.headers['xi-api-key'] !== 'test-key') { res.writeHead(401, { 'Content-Type': 'application/json' }); return res.end('{"detail":{"message":"bad key"}}'); }
   if (req.url.startsWith('/voices')) {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ voices: [{ voice_id: 'v1', name: 'Rachel', category: 'premade', labels: { gender: 'female', accent: 'american' }, preview_url: '' }] }));
+    return json(res, { voices: [
+      { voice_id: 'v1', name: 'Rachel', category: 'premade', labels: { gender: 'female', accent: 'american' }, preview_url: '' },
+      { voice_id: 'mine', name: 'My Clone', category: 'cloned', labels: {}, preview_url: '' },
+    ] });
   }
+  if (req.url === '/user/subscription') return json(res, { tier: 'creator', character_count: 1200, character_limit: 100000, next_character_count_reset_unix: 1800000000 });
+  if (req.url === '/user') return json(res, { first_name: 'Sam', subscription: { tier: 'creator' } });
+  if (req.url === '/models') return json(res, [
+    { model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true, description: 'Our most life-like model. Great for narration.' },
+    { model_id: 'eleven_flash_v2_5', name: 'Eleven Flash v2.5', can_do_text_to_speech: true, description: 'Ultra low latency.' },
+    { model_id: 'eleven_english_sts_v2', name: 'Speech to speech', can_do_text_to_speech: false },
+  ]);
   if (req.url.startsWith('/text-to-speech/v1')) {
     let body = '';
     req.on('data', (d) => (body += d));
     req.on('end', () => {
       const j = JSON.parse(body);
       if (!j.text || !j.model_id) { res.writeHead(400); return res.end('{}'); }
+      ttsModels.push(j.model_id);
       res.writeHead(200, { 'Content-Type': 'audio/mpeg' });
       res.end(fs.readFileSync(path.join(tmp, 'tone.mp3')));
     });
@@ -92,7 +104,10 @@ try {
   check(bad, 'a wrong key is rejected');
   await call('/api/connections/elevenlabs', { json: { key: 'test-key' } });
   const { voices } = await call('/api/voices');
-  check(voices[0].id === 'v1', 'voices listed');
+  check(voices[0].id === 'mine' && voices.length === 2, 'your own (cloned) voice is listed first');
+  const acct = await call('/api/elevenlabs/account');
+  check(acct.account.name === 'Sam' && acct.account.limit - acct.account.used === 98800, 'account name and characters left shown');
+  check(acct.models.length === 2 && acct.defaultId === 'eleven_multilingual_v2', 'only text-to-speech models offered, best one by default');
   const fs404 = await fetch(`${base}/files/settings.json`);
   check(fs404.status === 404, 'settings file (keys) is not publicly served');
 
@@ -101,6 +116,9 @@ try {
   check(vo.segments.length === scenes.length && vo.segments.every((g) => g.duration > 1), 'one voice clip per scene');
   const vo2 = await call('/api/voice/elevenlabs', { json: { voiceId: 'v1', scenes, reuse: vo.segments } });
   check(vo2.segments.every((g, i) => g.file === vo.segments[i].file), 'unchanged scenes are reused');
+  const before = ttsModels.length;
+  const vo3 = await call('/api/voice/elevenlabs', { json: { voiceId: 'v1', modelId: 'eleven_flash_v2_5', scenes, reuse: vo.segments } });
+  check(ttsModels.length - before === scenes.length && ttsModels.at(-1) === 'eleven_flash_v2_5' && vo3.segments[0].modelId === 'eleven_flash_v2_5', 'switching model re-records with the chosen model');
 
   console.log('Media uploads');
   const photo = await uploadFile('/api/media/upload', path.join(tmp, 'photo.jpg'));
@@ -143,6 +161,26 @@ try {
 
   fs.copyFileSync(r1.out, path.join(process.env.SMOKE_OUT || tmp, 'smoke-landscape.mp4'));
   fs.copyFileSync(r2.out, path.join(process.env.SMOKE_OUT || tmp, 'smoke-portrait.mp4'));
+  console.log('Password gate (for phone / cloud use)');
+  const refused = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: '3997', HOST: '0.0.0.0', APP_PASSWORD: '', DATA_DIR: path.join(tmp, 'data2') }, stdio: 'ignore' });
+  const code = await new Promise((r) => refused.on('exit', r));
+  check(code === 1, 'refuses to go public without a password');
+  const gated = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: '3996', APP_PASSWORD: 'sesame', DATA_DIR: path.join(tmp, 'data3') }, stdio: ['ignore', 'pipe', 'inherit'] });
+  await new Promise((r) => gated.stdout.on('data', (d) => d.toString().includes('running') && r()));
+  try {
+    const g = 'http://127.0.0.1:3996';
+    check((await fetch(`${g}/api/status`)).status === 401, 'API locked before sign-in');
+    check((await fetch(`${g}/`, { redirect: 'manual' })).headers.get('location') === '/login', 'app redirects to sign-in');
+    check((await fetch(`${g}/healthz`)).ok, 'health check stays open for the host');
+    const bad = await fetch(`${g}/login`, { method: 'POST', body: new URLSearchParams({ password: 'nope' }), redirect: 'manual' });
+    check(bad.headers.get('location') === '/login?e=1' && !bad.headers.get('set-cookie'), 'wrong password rejected');
+    const good = await fetch(`${g}/login`, { method: 'POST', body: new URLSearchParams({ password: 'sesame' }), redirect: 'manual' });
+    const cookie = good.headers.get('set-cookie').split(';')[0];
+    check((await fetch(`${g}/api/status`, { headers: { cookie } })).ok, 'signed in with the right password');
+  } finally {
+    gated.kill();
+  }
+
   console.log('\nAll good ✅');
 } catch (err) {
   console.error(`\n❌ ${err.message}`);

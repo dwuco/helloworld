@@ -93,6 +93,10 @@ async function api(url, opts = {}) {
     init.body = JSON.stringify(opts.json);
   }
   const res = await fetch(url, init);
+  if (res.status === 401) {
+    location.href = '/login';
+    throw new Error('Please sign in again.');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
@@ -339,26 +343,75 @@ function viewVoice() {
   </div>`;
 }
 
+function elevenConnectCard() {
+  return `
+    <div class="connect-card">
+      <div class="row" style="gap:12px;align-items:flex-start;flex-wrap:nowrap">
+        <span class="conn-icon">🎙️</span>
+        <div style="min-width:0"><h3 style="margin:0">Connect your ElevenLabs account</h3>
+        <p class="muted small" style="margin:2px 0 0">Use your own voices, including cloned ones, and your own character allowance.</p></div>
+      </div>
+      <ol class="small steps-list">
+        <li><a class="btn small" href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">Open my ElevenLabs API keys ↗</a></li>
+        <li>Tap <b>Create API key</b>. If it asks about permissions, allow <b>Text to Speech</b>, <b>Voices</b> and <b>User</b> (read).</li>
+        <li>Copy the key, come back and paste it here.</li>
+      </ol>
+      <form class="key-row" data-form="key" data-name="elevenlabs">
+        <input class="input" type="password" name="key" placeholder="Paste your ElevenLabs API key" autocomplete="off" aria-label="ElevenLabs API key" />
+        <button class="btn primary" ${state.busy['key-elevenlabs'] ? 'disabled' : ''}>${spin('key-elevenlabs', 'Connect', '')}</button>
+      </form>
+      <p class="muted tiny" style="margin:0">ElevenLabs doesn't offer a "Sign in with ElevenLabs" button for other apps, so this key is how the app reaches your account. It's stored only on the app's server and never shown in the browser. You can delete it in ElevenLabs at any time.</p>
+    </div>`;
+}
+
+function accountBar() {
+  const a = state.el?.account;
+  if (!a) return '';
+  const left = a.limit != null && a.used != null ? Math.max(0, a.limit - a.used) : null;
+  const need = P().scenes.reduce((n, sc) => n + sc.text.trim().length, 0);
+  const low = left != null && left < need;
+  return `
+    <div class="account ${low ? 'low' : ''}">
+      <div><b>✓ ElevenLabs${a.name ? ` · ${esc(a.name)}` : ''}</b>${a.tier ? ` <span class="pill">${esc(a.tier.replace(/_/g, ' '))}</span>` : ''}</div>
+      <div class="small muted">${left != null ? `<b class="num">${left.toLocaleString()}</b> characters left · this video needs about <b class="num">${need.toLocaleString()}</b>` : `This video needs about <b class="num">${need.toLocaleString()}</b> characters`}</div>
+      ${low ? '<div class="small" style="color:var(--err)">Not enough characters left. Shorten the script or top up your ElevenLabs plan.</div>' : ''}
+    </div>`;
+}
+
+function voiceCard(x, v) {
+  return `
+    <div class="voice ${v.voiceId === x.id ? 'on' : ''}" data-action="pick-voice" data-id="${x.id}" role="button" tabindex="0">
+      ${x.previewUrl ? `<button class="play" title="Listen" data-action="preview" data-url="${esc(x.previewUrl)}">▶</button>` : '<span class="play" aria-hidden="true" style="display:grid;place-items:center">🎙️</span>'}
+      <span><span class="name">${esc(x.name)}</span><br><span class="tags">${esc(x.tags.join(' · ') || x.category || '')}</span></span>
+    </div>`;
+}
+
 function voiceAI(connected, stale) {
   const v = P().voice;
-  if (!connected) {
-    return `<div class="notice center"><p>Connect your ElevenLabs account to use realistic AI voices.</p><button class="btn primary" data-action="open-connections">🔌 Connect ElevenLabs</button></div>`;
-  }
+  if (!connected) return elevenConnectCard();
   if (state.voicesError) return `<p class="notice err">${esc(state.voicesError)} <button class="link" data-action="reload-voices">Try again</button></p>`;
-  if (!state.voices) return `<p class="muted center"><span class="spinner" style="border-top-color:var(--accent)"></span> Loading voices…</p>`;
+  if (!state.voices) return `<p class="muted center"><span class="spinner" style="border-top-color:var(--accent)"></span> Loading your ElevenLabs voices…</p>`;
   const has = (v.segments || []).length > 0;
+  const mine = state.voices.filter((x) => x.category && x.category !== 'premade');
+  const library = state.voices.filter((x) => !x.category || x.category === 'premade');
+  const models = state.el?.models || [];
   return `
-    <label class="lbl">1. Choose a voice</label>
-    <div class="voice-list">
-      ${state.voices.map((x) => `
-        <div class="voice ${v.voiceId === x.id ? 'on' : ''}" data-action="pick-voice" data-id="${x.id}" role="button" tabindex="0">
-          ${x.previewUrl ? `<button class="play" title="Listen" data-action="preview" data-url="${esc(x.previewUrl)}">▶</button>` : ''}
-          <span><span class="name">${esc(x.name)}</span><br><span class="tags">${esc(x.tags.join(' · ') || x.category || '')}</span></span>
-        </div>`).join('')}
+    ${accountBar()}
+    <label class="lbl" style="margin-top:16px">1. Choose a voice</label>
+    <div class="voice-scroll">
+      ${mine.length ? `<div class="group-title" style="margin-top:0">Your voices</div><div class="voice-list">${mine.map((x) => voiceCard(x, v)).join('')}</div>` : ''}
+      ${library.length ? `<div class="group-title" ${mine.length ? '' : 'style="margin-top:0"'}>ElevenLabs voices</div><div class="voice-list">${library.map((x) => voiceCard(x, v)).join('')}</div>` : ''}
     </div>
+    ${models.length > 1 ? `
+    <div class="section">
+      <label class="lbl" for="el-model">Voice model</label>
+      <select id="el-model" class="input" data-model style="max-width:420px">
+        ${models.map((m) => `<option value="${esc(m.id)}" ${v.modelId === m.id ? 'selected' : ''}>${esc(m.name)}${m.description ? ` · ${esc(m.description)}` : ''}</option>`).join('')}
+      </select>
+    </div>` : ''}
     <div class="section">
       <label class="lbl">2. Create the voiceover</label>
-      ${has && stale.length ? `<p class="notice warn small">Your script or voice changed. ${stale.length} scene${stale.length > 1 ? 's need' : ' needs'} a new recording.</p>` : ''}
+      ${has && stale.length ? `<p class="notice warn small">Your script, voice or model changed. ${stale.length} scene${stale.length > 1 ? 's need' : ' needs'} a new recording.</p>` : ''}
       ${has && !stale.length && v.previewUrl ? `<audio controls src="${esc(v.previewUrl)}"></audio><p class="muted small" style="margin-top:6px">✓ Voiceover ready. Scenes are timed to the voice automatically.</p>` : ''}
       <button class="btn ${has && !stale.length ? '' : 'primary big'}" data-action="gen-voice" ${!v.voiceId || state.busy.voice ? 'disabled' : ''}>
         ${spin('voice', has ? (stale.length ? '🎙️ Update voiceover' : '🔄 Re-record') : '🎙️ Generate voiceover', 'Recording… (about 2 sec per scene)')}
@@ -395,13 +448,25 @@ async function loadVoices(force) {
   if (!conn('elevenlabs') || (state.voices && !force)) return;
   state.voicesError = '';
   try {
-    const { voices } = await api('/api/voices');
+    const [{ voices }, el] = await Promise.all([api('/api/voices'), api('/api/elevenlabs/account').catch(() => null)]);
     state.voices = voices;
-    if (!P().voice.voiceId && voices[0]) P().voice.voiceId = voices[0].id;
+    state.el = el;
+    applyVoiceDefaults();
+    save();
   } catch (err) {
     state.voicesError = err.message;
   }
   render();
+}
+
+// Default to the person's own voice (cloned or designed) when they have one, and the account's default model.
+function applyVoiceDefaults() {
+  const v = P().voice;
+  const voices = state.voices || [];
+  if (v.mode !== 'elevenlabs' || !voices.length) return;
+  const own = voices.find((x) => x.category && x.category !== 'premade');
+  if (!v.voiceId || !voices.some((x) => x.id === v.voiceId)) v.voiceId = (own || voices[0]).id;
+  if (!v.modelId && state.el?.defaultId) v.modelId = state.el.defaultId;
 }
 
 let previewAudio;
@@ -417,10 +482,11 @@ async function generateVoice() {
   if (p.scenes.some((s) => !s.text.trim())) return toast('One of your scenes is empty. Add words or delete it.', 'err');
   await busy('voice', async () => {
     const out = await api('/api/voice/elevenlabs', {
-      json: { voiceId: p.voice.voiceId, scenes: p.scenes.map((s) => ({ id: s.id, text: s.text })), reuse: p.voice.segments || [] },
+      json: { voiceId: p.voice.voiceId, modelId: p.voice.modelId, scenes: p.scenes.map((s) => ({ id: s.id, text: s.text })), reuse: p.voice.segments || [] },
     });
     p.voice = { ...p.voice, segments: out.segments, previewUrl: out.previewUrl };
     save();
+    api('/api/elevenlabs/account').then((el) => { state.el = el; render(); }).catch(() => {});
     toast('Voiceover ready 🎉', 'ok');
   });
 }
@@ -453,8 +519,24 @@ function viewVisuals() {
   return `
   <div class="hero"><h1>Pick your visuals</h1><p>Every scene gets a free clip automatically. Swap any you don't love.</p></div>
   <div class="card">
+    ${!s.pexels && !s.pixabay ? `
+    <div class="connect-card" style="margin-bottom:16px">
+      <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
+        <span class="conn-icon">📹</span>
+        <div style="min-width:0"><h3 style="margin:0">Get real HD video clips</h3>
+        <p class="muted small" style="margin:2px 0 0">Right now you're getting still photos. Pexels has millions of professional stock videos that are free to use. The key is free and takes about a minute.</p></div>
+      </div>
+      <ol class="small steps-list">
+        <li><a class="btn small" href="https://www.pexels.com/api/new/" target="_blank" rel="noopener">Get my free Pexels key ↗</a></li>
+        <li>Copy the key, then paste it here.</li>
+      </ol>
+      <form class="key-row" data-form="key" data-name="pexels">
+        <input class="input" type="password" name="key" placeholder="Paste your Pexels API key" autocomplete="off" aria-label="Pexels API key" />
+        <button class="btn primary" ${state.busy['key-pexels'] ? 'disabled' : ''}>${spin('key-pexels', 'Connect', '')}</button>
+      </form>
+    </div>` : ''}
     <div class="row spread" style="margin-bottom:16px">
-      <span class="muted small">Source: <b>${sourceLabel()}</b>${!s.pexels && !s.pixabay ? ` · <button class="link" data-action="open-connections">Add Pexels for free video clips</button>` : ''}</span>
+      <span class="muted small">Source: <b>${sourceLabel()}</b></span>
       <button class="btn small" data-action="refind" ${state.searching.size ? 'disabled' : ''}>🔄 Find all again</button>
     </div>
     <div class="board">
@@ -514,7 +596,13 @@ async function findFor(scene, quiet) {
     }
     scene.alts = items;
     const used = usedUrls(scene.id);
-    scene.media = items.find((x) => !used.has(x.url)) || items[0] || null;
+    const need = computeTimeline(P().scenes, P().voice).items.find((t) => t.id === scene.id)?.duration || 5;
+    const fresh = items.filter((x) => !used.has(x.url));
+    // Best: a real video clip long enough to cover the scene without looping.
+    scene.media =
+      fresh.find((x) => x.type === 'video' && (x.duration || 0) >= need) ||
+      fresh.find((x) => x.type === 'video') ||
+      fresh[0] || items[0] || null;
     scene.searched = true;
   } catch (err) {
     scene.searched = true;
@@ -805,7 +893,7 @@ async function share() {
 const CONNECTIONS = [
   { group: 'Voice', name: 'elevenlabs', icon: '🎙️', title: 'ElevenLabs', desc: 'Realistic AI voiceovers', link: 'https://elevenlabs.io/app/settings/api-keys', linkText: 'Get your API key' },
   { group: 'Script writing', name: 'anthropic', icon: '✨', title: 'Claude', desc: 'Writes your scripts, titles and descriptions', link: 'https://console.anthropic.com/settings/keys', linkText: 'Get an API key' },
-  { group: 'Free stock media', name: 'pexels', icon: '📹', title: 'Pexels', desc: 'Free HD videos & photos', link: 'https://www.pexels.com/api/new/', linkText: 'Get a free key' },
+  { group: 'Free stock media', name: 'pexels', icon: '📹', title: 'Pexels', desc: 'Real HD video clips & photos. Recommended', link: 'https://www.pexels.com/api/new/', linkText: 'Get a free key' },
   { group: 'Free stock media', name: 'pixabay', icon: '🌄', title: 'Pixabay', desc: 'Free videos & photos', link: 'https://pixabay.com/api/docs/#api_search_images', linkText: 'Get a free key (shown once you log in)' },
 ];
 
@@ -887,6 +975,7 @@ async function saveKey(name, key) {
       state.voices = null;
       loadVoices(true);
     }
+    if ((name === 'pexels' || name === 'pixabay') && STEPS[state.step].key === 'visuals') autoFindVisuals(true);
     toast('Connected ✓', 'ok');
   });
   renderDrawer();
@@ -988,6 +1077,7 @@ const actions = {
     p.voiceMemory = p.voiceMemory || {};
     if (p.voice.mode) p.voiceMemory[p.voice.mode] = p.voice;
     p.voice = p.voiceMemory[mode]?.mode === mode ? p.voiceMemory[mode] : mode === 'elevenlabs' ? { mode, segments: [] } : { mode };
+    applyVoiceDefaults();
     save();
     render();
     if (mode === 'elevenlabs') loadVoices();
@@ -1059,6 +1149,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const el = e.target;
   if (el.matches('input[type=checkbox][data-action]')) actions[el.dataset.action]?.(el, e);
+  if (el.matches('[data-model]')) { P().voice.modelId = el.value; save(); render(); }
   if (el.id === 'file-voice') { uploadVoice(el.files[0]); el.value = ''; }
   if (el.id === 'file-media') { uploadMedia(el.files[0]); el.value = ''; }
 });
