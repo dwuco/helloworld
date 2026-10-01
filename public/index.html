@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Video Studio</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" data-action="home"><span class="logo">🎬</span><span>AI Video Studio</span></a>
+    <nav class="top-actions">
+      <button class="btn ghost" data-action="open-library">🎞️ <span class="hide-sm">My videos</span></button>
+      <button class="btn ghost" data-action="open-connections">🔌 <span class="hide-sm">Connections</span> <span id="conn-count" class="pill"></span></button>
+    </nav>
+  </header>
+
+  <ol class="stepper" id="stepper"></ol>
+
+  <main id="main" class="main"></main>
+
+  <aside id="drawer" class="drawer" aria-hidden="true"></aside>
+  <div id="scrim" class="scrim" data-action="close-overlays"></div>
+  <div id="modal" class="modal" role="dialog" aria-modal="true"></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <input type="file" id="file-voice" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" hidden />
+  <input type="file" id="file-media" accept="image/*,video/*" hidden />
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
