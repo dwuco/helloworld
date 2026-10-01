@@ -10,6 +10,12 @@ Make a narrated video in five simple steps, right on your computer:
 
 Your work is saved automatically in the browser, so a refresh never loses anything.
 
+## Phone version
+
+`mobile/index.html` is a pocket edition that runs entirely in the phone's browser as a claude.ai page. Claude writes the script through your claude.ai account, so no API keys are needed. You add your own recording and camera-roll photos or clips. The video is recorded on the phone itself as MP4 (WebM on some Android browsers) and saved through the page's save prompt.
+
+It cannot reach ElevenLabs, Pexels or YouTube directly, because claude.ai pages can't call outside services. Make an ElevenLabs voiceover in their app, download the MP3, and add it as your recording.
+
 ## Quick start
 
 You need [Node.js](https://nodejs.org) 18.17 or newer.
