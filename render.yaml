@@ -1,0 +1,21 @@
+# One-click deploy to Render (https://render.com) so you can use the app from your phone.
+# Render asks for the values marked "sync: false" when you deploy.
+services:
+  - type: web
+    name: ai-video-studio
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: APP_PASSWORD # required: protects your keys; you type it on your phone to sign in
+        sync: false
+      - key: ELEVENLABS_API_KEY # optional here: you can also paste it inside the app
+        sync: false
+      - key: PEXELS_API_KEY # optional here: free key from pexels.com/api for real video clips
+        sync: false
+      - key: ANTHROPIC_API_KEY # optional: Claude writes your scripts
+        sync: false

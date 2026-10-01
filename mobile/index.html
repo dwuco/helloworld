@@ -1,0 +1,973 @@
+<title>AI Video Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;600;800&family=JetBrains+Mono:wght@500&display=swap" />
+<style>
+/* Layout: a one-column phone studio. Slate-style headings, a thumb-reach action dock, timecodes in mono. */
+:root {
+  --bg: #eef0ec;
+  --surface: #ffffff;
+  --ink: #15201b;
+  --muted: #5d6b64;
+  --line: #d8ddd8;
+  --accent: #0b8f52;      /* chroma-key green */
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefe4;
+  --rec: #d6402f;         /* tally light */
+  --warn-soft: #fbefd5;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --r: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1412; --surface: #18201d; --ink: #e7eee9; --muted: #98a69f; --line: #2a3531;
+    --accent: #2fd283; --accent-ink: #062014; --accent-soft: #173527; --rec: #ff6a55; --warn-soft: #3a2f17;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1412; --surface: #18201d; --ink: #e7eee9; --muted: #98a69f; --line: #2a3531;
+  --accent: #2fd283; --accent-ink: #062014; --accent-soft: #173527; --rec: #ff6a55; --warn-soft: #3a2f17;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--body); -webkit-tap-highlight-color: transparent; }
+button, input, textarea, select { font: inherit; color: inherit; }
+.app { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-block: 0 120px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 14px 10px; }
+.brand { font-family: var(--display); font-weight: 900; font-size: 26px; letter-spacing: 0.02em; text-transform: uppercase; line-height: 1; }
+.brand small { display: block; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
+.tc { font-family: var(--mono); font-size: 13px; padding: 6px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tc .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: 1px; }
+.tc.live .dot { background: var(--rec); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.2; } }
+
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 6px 10px; }
+.steps button { border: 0; background: none; padding: 8px 0 6px; border-bottom: 3px solid var(--line); font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.steps button.on { color: var(--ink); border-color: var(--accent); }
+.steps button.done { color: var(--ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.steps button:disabled { opacity: 0.45; }
+.steps button:focus-visible, .btn:focus-visible, .chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+h1 { font-family: var(--display); font-weight: 900; text-transform: uppercase; font-size: 40px; line-height: 0.95; letter-spacing: 0.01em; margin: 10px 0 6px; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 20px; letter-spacing: 0.04em; margin: 0 0 8px; }
+.lead { color: var(--muted); margin: 0 0 16px; }
+.stack { display: flex; flex-direction: column; gap: 18px; }
+.lbl { display: block; font-weight: 700; margin-bottom: 8px; font-size: 15px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.tiny { font-size: 12px; }
+
+.input { width: 100%; border: 1.5px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; outline: none; font-size: 16px; }
+.input:focus { border-color: var(--accent); }
+textarea.input { resize: vertical; min-height: 96px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1.5px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 99px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip.ex { background: var(--accent-soft); border-color: transparent; font-weight: 500; }
+
+.formats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fmt { border: 1.5px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; }
+.fmt .shape { border: 2.5px solid currentColor; border-radius: 4px; color: var(--muted); }
+.fmt.on { border-color: var(--accent); background: var(--accent-soft); }
+.fmt.on .shape { color: var(--accent); }
+.fmt span.sub { font-weight: 400; color: var(--muted); font-size: 11px; line-height: 1.2; }
+
+.monitor { position: relative; background: #000; border-radius: var(--r); overflow: hidden; margin-inline: auto; max-width: 100%; }
+.monitor canvas, .monitor video { display: block; width: 100%; height: 100%; }
+.monitor .slate { position: absolute; top: 10px; left: 10px; font-family: var(--mono); font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 3px 7px; border-radius: 6px; letter-spacing: 0.06em; }
+
+.scene { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; }
+.scene .num { font-family: var(--display); font-weight: 900; font-size: 34px; line-height: 1; color: var(--accent); }
+.scene .num small { display: block; font-family: var(--mono); font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: 0.05em; margin-top: 4px; }
+.scene textarea { border: 0; background: transparent; padding: 0; min-height: 70px; width: 100%; resize: none; outline: none; font-size: 16px; }
+.scene-tools { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.icon { border: 1px solid var(--line); background: var(--surface); width: 40px; height: 36px; border-radius: 10px; cursor: pointer; }
+.icon:disabled { opacity: 0.35; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px solid var(--line); background: var(--surface); padding: 12px 16px; border-radius: 12px; font-weight: 700; cursor: pointer; text-decoration: none; color: var(--ink); min-height: 48px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.rec { background: var(--rec); color: #fff; border-color: var(--rec); }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 14px; border-radius: 10px; }
+.btn:disabled { opacity: 0.5; }
+.btn.full { width: 100%; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.option { display: flex; gap: 12px; align-items: center; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--r); padding: 14px; cursor: pointer; text-align: left; width: 100%; }
+.option.on { border-color: var(--accent); background: var(--accent-soft); }
+.option b { display: block; }
+.option .glyph { font-size: 26px; width: 36px; text-align: center; flex: none; }
+
+.note { background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+.note.warn { background: var(--warn-soft); }
+.drop { border: 2px dashed var(--line); border-radius: var(--r); padding: 22px; text-align: center; background: var(--surface); cursor: pointer; width: 100%; }
+
+.shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.shot { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; }
+.shot canvas { display: block; width: 100%; background: #000; }
+.shot .body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.shot .txt { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.shot .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: auto; }
+.shot .tools .btn { min-height: 34px; padding: 4px 6px; font-size: 12px; border-radius: 9px; }
+
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; cursor: pointer; }
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.sw { width: 46px; height: 28px; border-radius: 99px; background: var(--line); position: relative; flex: none; transition: background 0.2s; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+.toggle input:checked + .sw { background: var(--accent); }
+.toggle input:checked + .sw::after { transform: translateX(18px); }
+.toggle input:focus-visible + .sw { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.meter { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.meter > div { height: 100%; background: var(--rec); width: 0; transition: width 0.25s linear; }
+
+.dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+.dock .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+.dock .btn { min-height: 52px; font-size: 17px; }
+
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); z-index: 20; max-width: 528px; margin: 0 auto; background: var(--ink); color: var(--bg); padding: 12px 14px; border-radius: 12px; font-size: 14px; }
+.spin { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.offstage { position: fixed; left: -9999px; top: 0; width: 2px; height: 2px; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .tc.live .dot, .spin { animation: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">AI Video Studio<small>POCKET EDITION</small></div>
+    <div class="tc" id="tc"><span class="dot"></span><span id="tc-text">00:00:00</span></div>
+  </header>
+  <nav class="steps" id="steps" aria-label="Steps"></nav>
+  <main id="view"></main>
+</div>
+
+<footer class="dock"><div class="inner" id="dock"></div></footer>
+<div class="toast" id="toast" hidden></div>
+<div class="offstage" id="offstage" aria-hidden="true"></div>
+<input type="file" id="f-voice" accept="audio/*,.m4a,.mp3,.wav,.aac" hidden />
+<input type="file" id="f-media" accept="image/*,video/*" hidden />
+
+<script>
+(() => {
+'use strict';
+
+// ---------------------------------------------------------------- constants
+const STEPS = ['Idea', 'Script', 'Voice', 'Look', 'Render'];
+const TONES = ['Friendly', 'Energetic', 'Calm', 'Funny', 'Storytelling'];
+const LENGTHS = [[20, '20s'], [30, '30s'], [45, '45s'], [60, '1 min']];
+const EXAMPLES = ['5 surprising facts about octopuses', 'Morning habits that actually work', 'Why the sky turns orange at sunset', '3 tiny tips for better sleep'];
+const FORMATS = {
+  portrait: { label: '9:16', sub: 'TikTok · Shorts · Reels', w: 9, h: 16 },
+  landscape: { label: '16:9', sub: 'YouTube', w: 16, h: 9 },
+  square: { label: '1:1', sub: 'Instagram feed', w: 1, h: 1 },
+};
+const PALETTES = [['#0b3d5c', '#1aa39a'], ['#3a0f4f', '#c2416b'], ['#10213f', '#3d6fd9'], ['#3b1d0b', '#d9822b'], ['#0d3320', '#46a35a'], ['#2a0f2f', '#7b3fd1'], ['#331111', '#d14b3f'], ['#0f2a33', '#5ab3c9']];
+const FALLBACK_EMOJI = ['✨', '🎬', '💡', '🌍', '🔥', '🎯', '🚀', '🌙'];
+const KEY = 'ai-video-studio-pocket:v1';
+
+// An example project so every step is playable the moment the page opens.
+const EXAMPLE = {
+  example: true,
+  topic: '5 surprising facts about octopuses', tone: 'Friendly', lengthSec: 30, format: 'portrait', hd: false,
+  title: '5 Octopus Facts That Sound Made Up',
+  description: 'Three hearts, blue blood and arms that think for themselves. Here are five octopus facts that sound fake but are completely true.',
+  hashtags: ['octopus', 'oceanfacts', 'learnontiktok'],
+  scenes: [
+    { id: 'e1', text: 'Octopuses are stranger than any alien in the movies.', emoji: '🐙', colors: ['#0b3d5c', '#1aa39a'] },
+    { id: 'e2', text: 'They have three hearts, and their blood is blue.', emoji: '💙', colors: ['#10213f', '#3d6fd9'] },
+    { id: 'e3', text: 'Two thirds of their brain cells live in their arms.', emoji: '🧠', colors: ['#2a0f2f', '#7b3fd1'] },
+    { id: 'e4', text: 'They can change colour in a fraction of a second.', emoji: '🎨', colors: ['#3a0f4f', '#c2416b'] },
+    { id: 'e5', text: 'Follow for more facts from the deep.', emoji: '🌊', colors: ['#0f2a33', '#5ab3c9'] },
+  ],
+  voice: { mode: 'none' }, captions: true, music: true, writer: 'example',
+};
+
+// ---------------------------------------------------------------- state
+let P = load() || JSON.parse(JSON.stringify(EXAMPLE));
+let step = 0;
+const busy = {};
+const media = new Map(); // id -> {type, url, blob, name}
+let voiceFile = null;   // {url, blob, name, duration}
+let result = null;      // {url, blob, ext, seconds}
+let engine = null;      // running preview / recording
+let sampleFn, downloadsApi = null; // sampleFn: undefined = still connecting, null = unavailable
+let live = null; // null | 'rec' | 'preview'
+
+function load() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(P)); } catch { /* storage unavailable */ } }
+
+// Tiny IndexedDB store so photos and recordings survive a reload.
+const idb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('ai-video-studio-pocket', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('blobs');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('blobs', mode); const q = fn(t.objectStore('blobs')); t.oncomplete = () => res(q?.result); t.onerror = () => rej(t.error); }); };
+  return {
+    put: (k, v) => tx('readwrite', (s) => s.put(v, k)).catch(() => {}),
+    get: (k) => tx('readonly', (s) => s.get(k)).catch(() => null),
+    del: (k) => tx('readwrite', (s) => s.delete(k)).catch(() => {}),
+  };
+})();
+
+// ---------------------------------------------------------------- helpers
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const uid = () => Math.random().toString(36).slice(2, 9);
+const words = (t) => (t || '').trim().split(/\s+/).filter(Boolean).length;
+const tcode = (sec) => { const s = Math.max(0, sec || 0); const f = Math.floor((s % 1) * 30); const t = Math.floor(s); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}:${String(f).padStart(2, '0')}`; };
+let toastTimer;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 4200); }
+const hex = (c) => /^#[0-9a-f]{6}$/i.test(c || '');
+
+function timeline() {
+  const sc = P.scenes;
+  let d;
+  if (P.voice.mode === 'upload' && voiceFile?.duration) {
+    const w = sc.map((s) => Math.max(s.text.trim().length, 12));
+    const sum = w.reduce((a, b) => a + b, 0) || 1;
+    d = w.map((x) => (voiceFile.duration * x) / sum);
+  } else {
+    d = sc.map((s) => Math.max(2.5, words(s.text) / 2.5 + 0.5));
+  }
+  let t = 0;
+  const items = d.map((dur) => { const it = { start: t, dur }; t += dur; return it; });
+  return { items, total: t };
+}
+
+function dims() {
+  const q = P.hd ? 1080 : 720;
+  const long = Math.round((q * 16) / 9);
+  return P.format === 'portrait' ? [q, long] : P.format === 'landscape' ? [long, q] : [q, q];
+}
+
+function updateTC() { if (!engine) $('#tc-text').textContent = tcode(timeline().total); }
+
+// ---------------------------------------------------------------- drawing
+function seeded(n) { let x = Math.sin(n * 9301 + 49297) * 233280; return x - Math.floor(x); }
+const easeOutBack = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+
+function cover(ctx, src, sw, sh, W, H, zoom, panX, panY) {
+  if (!sw || !sh) return;
+  const s = Math.max(W / sw, H / sh) * zoom;
+  const dw = sw * s, dh = sh * s;
+  ctx.drawImage(src, (W - dw) / 2 + panX * (dw - W) / 2, (H - dh) / 2 + panY * (dh - H) / 2, dw, dh);
+}
+
+function drawArt(ctx, W, H, s, i, local) {
+  const [c1, c2] = hex(s.colors?.[0]) && hex(s.colors?.[1]) ? s.colors : PALETTES[i % PALETTES.length];
+  const a = i * 1.1 + local * 0.12;
+  const cx = W / 2, cy = H / 2, r = Math.hypot(W, H) / 2;
+  const g = ctx.createLinearGradient(cx - Math.cos(a) * r, cy - Math.sin(a) * r, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const m = Math.min(W, H);
+  for (let k = 0; k < 7; k++) {
+    const sx = seeded(i * 31 + k), sy = seeded(i * 17 + k * 3), sr = seeded(i * 7 + k * 11);
+    const x = (sx * W + Math.sin(local * 0.5 + k) * m * 0.06) % W;
+    const y = (sy * H - local * m * 0.025 * (1 + k % 3) + H * 2) % H;
+    ctx.beginPath(); ctx.arc(x, y, m * (0.06 + sr * 0.22), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${0.05 + sr * 0.07})`; ctx.fill();
+  }
+  const size = m * (P.format === 'landscape' ? 0.36 : 0.42);
+  const pop = Math.min(1, local / 0.55);
+  const sc = 0.55 + 0.45 * easeOutBack(pop);
+  const ey = H * (P.format === 'portrait' ? 0.38 : 0.42) + Math.sin(local * 1.7) * m * 0.015;
+  ctx.save();
+  ctx.translate(W / 2, ey); ctx.scale(sc, sc); ctx.rotate(Math.sin(local * 1.1) * 0.04);
+  ctx.font = `${Math.round(size)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = m * 0.04; ctx.shadowOffsetY = m * 0.015;
+  ctx.fillText(s.emoji || FALLBACK_EMOJI[i % FALLBACK_EMOJI.length], 0, 0);
+  ctx.restore();
+}
+
+function drawScene(ctx, W, H, i, local, dur, assets) {
+  const s = P.scenes[i];
+  const a = s.mediaId && assets.get(s.mediaId);
+  if (a?.img) {
+    const p = Math.min(1, local / dur);
+    const z = i % 2 ? 1.14 - 0.12 * p : 1.02 + 0.12 * p;
+    cover(ctx, a.img, a.img.naturalWidth || a.img.width, a.img.naturalHeight || a.img.height, W, H, z, (i % 3 - 1) * 0.3 * p, 0);
+  } else if (a?.video) {
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    cover(ctx, a.video, a.video.videoWidth, a.video.videoHeight, W, H, 1, 0, 0);
+  } else {
+    drawArt(ctx, W, H, s, i, local);
+  }
+}
+
+const chunkCache = new Map();
+function chunks(text) {
+  const key = `${P.format}|${text}`;
+  if (chunkCache.has(key)) return chunkCache.get(key);
+  const per = P.format === 'landscape' ? 6 : 4;
+  const w = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const out = [];
+  for (let i = 0; i < w.length;) {
+    let end = Math.min(w.length, i + per);
+    for (let j = i + 1; j < end; j++) if (/[,.!?;:]$/.test(w[j - 1]) && j - i >= 2) { end = j; break; }
+    out.push(w.slice(i, end).join(' '));
+    i = end;
+  }
+  chunkCache.set(key, out);
+  return out;
+}
+
+function drawCaption(ctx, W, H, text, local, dur) {
+  const list = chunks(text);
+  if (!list.length) return;
+  const weights = list.map((c) => c.length + 4);
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const usable = Math.max(0.5, dur - 0.1);
+  let acc = 0, idx = 0, cs = 0;
+  for (let k = 0; k < list.length; k++) { const d = (usable * weights[k]) / sum; if (local < acc + d || k === list.length - 1) { idx = k; cs = local - acc; break; } acc += d; }
+  const m = Math.min(W, H);
+  const size = Math.round(P.format === 'landscape' ? H * 0.075 : m * 0.085);
+  ctx.font = `800 ${size}px Figtree, system-ui, sans-serif`;
+  const maxW = W * 0.84;
+  const lines = [];
+  let line = '';
+  for (const wd of list[idx].split(' ')) { const test = line ? `${line} ${wd}` : wd; if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = wd; } else line = test; }
+  if (line) lines.push(line);
+  const lh = size * 1.18;
+  const bottom = H * (P.format === 'portrait' ? 0.76 : 0.86);
+  const pop = 0.9 + 0.1 * Math.min(1, cs / 0.12);
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  lines.forEach((ln, k) => {
+    const y = bottom - (lines.length - 1 - k) * lh;
+    ctx.save(); ctx.translate(W / 2, y); ctx.scale(pop, pop);
+    ctx.lineWidth = size * 0.2; ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.strokeText(ln, 0, 0);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(ln, 0, 0);
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+function drawFrame(ctx, W, H, t, tl, assets) {
+  let i = tl.items.findIndex((it) => t < it.start + it.dur);
+  if (i < 0) i = tl.items.length - 1;
+  const it = tl.items[i];
+  const local = Math.max(0, t - it.start);
+  drawScene(ctx, W, H, i, local, it.dur, assets);
+  if (i > 0 && local < 0.35) { // quick crossfade from the previous scene
+    ctx.save(); ctx.globalAlpha = 1 - local / 0.35;
+    const pv = tl.items[i - 1];
+    drawScene(ctx, W, H, i - 1, pv.dur, pv.dur, assets);
+    ctx.restore();
+  }
+  const shade = ctx.createLinearGradient(0, H * 0.55, 0, H);
+  shade.addColorStop(0, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.fillStyle = shade; ctx.fillRect(0, H * 0.55, W, H * 0.45);
+  if (P.captions) drawCaption(ctx, W, H, P.scenes[i].text, local, it.dur);
+  return i;
+}
+
+// ---------------------------------------------------------------- assets
+const assetCache = new Map();
+function loadAsset(id) {
+  if (assetCache.has(id)) return assetCache.get(id);
+  const m = media.get(id);
+  if (!m) return Promise.resolve(null);
+  const p = new Promise((res) => {
+    if (m.type === 'image') {
+      const img = new Image();
+      img.onload = () => res({ img });
+      img.onerror = () => res(null);
+      img.src = m.url;
+    } else {
+      const v = document.createElement('video');
+      Object.assign(v, { muted: true, playsInline: true, loop: true, preload: 'auto', src: m.url });
+      v.setAttribute('playsinline', '');
+      v.setAttribute('muted', '');
+      $('#offstage').append(v);
+      const done = () => res({ video: v });
+      v.addEventListener('loadeddata', () => { v.play().then(() => { v.pause(); done(); }).catch(done); }, { once: true });
+      v.onerror = () => res(null);
+      setTimeout(done, 6000);
+    }
+  });
+  assetCache.set(id, p);
+  return p;
+}
+async function loadAssets() {
+  const map = new Map();
+  for (const s of P.scenes) if (s.mediaId) { const a = await loadAsset(s.mediaId); if (a) map.set(s.mediaId, a); }
+  return map;
+}
+
+// ---------------------------------------------------------------- music (generated, no files)
+function addMusic(ac, out, start, total, quiet) {
+  const master = ac.createGain();
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400;
+  master.connect(lp); lp.connect(out);
+  const vol = quiet ? 0.05 : 0.12;
+  master.gain.setValueAtTime(0, start);
+  master.gain.linearRampToValueAtTime(vol, start + 1.2);
+  master.gain.setValueAtTime(vol, Math.max(start + 1.2, start + total - 1.5));
+  master.gain.linearRampToValueAtTime(0, start + total);
+  const chords = [[220, 277.18, 329.63], [174.61, 220, 261.63], [196, 246.94, 293.66], [164.81, 207.65, 246.94]];
+  const bar = 2.4;
+  const nodes = [];
+  for (let k = 0; k * bar < total; k++) {
+    const t0 = start + k * bar;
+    const ch = chords[k % chords.length];
+    [...ch, ch[0] / 2].forEach((f, j) => {
+      const o = ac.createOscillator(); o.type = j === 3 ? 'sine' : 'triangle'; o.frequency.value = f;
+      const g = ac.createGain();
+      const peak = j === 3 ? 0.5 : 0.22;
+      g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(peak, t0 + 0.4); g.gain.linearRampToValueAtTime(peak * 0.6, t0 + bar); g.gain.linearRampToValueAtTime(0, t0 + bar + 0.6);
+      o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + bar + 0.7);
+      nodes.push(o);
+    });
+    // a soft pluck on each beat keeps it moving
+    for (let b = 0; b < 4; b++) {
+      const tb = t0 + b * (bar / 4);
+      if (tb > start + total) break;
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = ch[(b + k) % 3] * 2;
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, tb); g.gain.exponentialRampToValueAtTime(0.18, tb + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, tb + 0.5);
+      o.connect(g); g.connect(master); o.start(tb); o.stop(tb + 0.55);
+      nodes.push(o);
+    }
+  }
+  return () => nodes.forEach((n) => { try { n.stop(); } catch { /* already stopped */ } });
+}
+
+// ---------------------------------------------------------------- engine (preview + record)
+function pickMime() {
+  const list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  if (!window.MediaRecorder) return null;
+  return list.find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+}
+
+async function run({ canvas, record, onTick, onEnd }) {
+  // AudioContext must be created inside the tap that started this.
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ac = AC ? new AC() : null;
+  ac?.resume?.();
+  const [W, H] = dims();
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const tl = timeline();
+  const state = { stopped: false, ac, recorder: null, chunks: [], stopMusic: null, voiceSrc: null, raf: 0, wake: null };
+  engine = state;
+  try { state.wake = await navigator.wakeLock?.request('screen'); } catch { /* not allowed here */ }
+  await document.fonts?.load?.('800 40px Figtree').catch(() => {});
+  const assets = await loadAssets();
+
+  let out = ac?.destination;
+  let dest = null;
+  if (record && ac?.createMediaStreamDestination) { dest = ac.createMediaStreamDestination(); out = dest; }
+  const start = ac ? ac.currentTime + 0.15 : 0;
+  if (ac) {
+    if (P.voice.mode === 'upload' && voiceFile?.blob) {
+      try {
+        const buf = await ac.decodeAudioData(await voiceFile.blob.arrayBuffer());
+        const src = ac.createBufferSource(); src.buffer = buf;
+        src.connect(out); if (record) src.connect(ac.destination);
+        src.start(start); state.voiceSrc = src;
+      } catch { toast("Couldn't read your recording, so this take has no voice."); }
+    }
+    if (P.music) {
+      const music = ac.createGain(); music.connect(out); if (record) music.connect(ac.destination);
+      state.stopMusic = addMusic(ac, music, start, tl.total, P.voice.mode === 'upload');
+    }
+  }
+
+  if (record) {
+    const mime = pickMime();
+    if (mime === null || !canvas.captureStream) throw new Error('This browser cannot record video. Try Safari on iPhone or Chrome on Android.');
+    const stream = canvas.captureStream(30);
+    if (dest && (P.voice.mode === 'upload' || P.music)) dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+    const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: P.hd ? 8_000_000 : 4_500_000 });
+    rec.ondataavailable = (e) => e.data?.size && state.chunks.push(e.data);
+    state.recorder = rec;
+    drawFrame(ctx, W, H, 0, tl, assets);
+    rec.start(500);
+  }
+
+  const clockStart = performance.now();
+  const now = () => (ac && ac.state === 'running' ? ac.currentTime - start : (performance.now() - clockStart) / 1000 - 0.15);
+  let lastScene = -1;
+  const tick = () => {
+    if (state.stopped) return;
+    const t = Math.max(0, now());
+    const i = drawFrame(ctx, W, H, Math.min(t, tl.total - 0.001), tl, assets);
+    if (i !== lastScene) {
+      const prev = P.scenes[lastScene]?.mediaId && assets.get(P.scenes[lastScene].mediaId);
+      prev?.video?.pause();
+      const cur = P.scenes[i]?.mediaId && assets.get(P.scenes[i].mediaId);
+      if (cur?.video) { cur.video.currentTime = 0; cur.video.play().catch(() => {}); }
+      lastScene = i;
+    }
+    onTick?.(t, tl.total, i);
+    if (t >= tl.total) return finish(true);
+    state.raf = requestAnimationFrame(tick);
+  };
+  state.raf = requestAnimationFrame(tick);
+
+  function finish(completed) {
+    if (state.stopped) return;
+    state.stopped = true;
+    cancelAnimationFrame(state.raf);
+    assets.forEach((a) => a.video?.pause());
+    try { state.voiceSrc?.stop(); } catch { /* not started */ }
+    state.stopMusic?.();
+    state.wake?.release?.().catch(() => {});
+    const close = () => ac?.close?.().catch(() => {});
+    if (state.recorder && state.recorder.state !== 'inactive') {
+      state.recorder.onstop = () => {
+        close();
+        const type = state.recorder.mimeType || 'video/webm';
+        const blob = new Blob(state.chunks, { type });
+        engine = null;
+        onEnd?.(completed ? blob : null, type);
+      };
+      state.recorder.stop();
+    } else { close(); engine = null; onEnd?.(null); }
+  }
+  state.stop = () => finish(false);
+  return state;
+}
+
+// ---------------------------------------------------------------- Claude (script writer)
+async function writeScript(own) {
+  const n = Math.max(3, Math.min(10, Math.round(P.lengthSec / 6)));
+  const wordsTarget = Math.round(P.lengthSec * 2.5);
+  const platform = P.format === 'portrait' ? 'a vertical short (TikTok, YouTube Shorts, Reels)' : P.format === 'square' ? 'an Instagram feed video' : 'a YouTube video';
+  const shape = '{"title": "...", "description": "...", "hashtags": ["..."], "scenes": [{"narration": "...", "emoji": "🐙", "colors": ["#0b3d5c", "#1aa39a"]}]}';
+  const rules = `For every scene give "narration" (spoken words, plain and natural, no stage directions or emoji), "emoji" (ONE emoji that illustrates the scene) and "colors" (two hex colours for an animated background gradient that suits the mood; keep them dark or saturated enough for white captions to read). Also write a catchy "title" under 70 characters, a 2 sentence "description" and 3-5 "hashtags" without the # sign. Reply with only JSON in this shape: ${shape}`;
+  const prompt = own
+    ? `Here is a voiceover script for ${platform}. Split it into about ${n} scenes at natural sentence breaks WITHOUT changing any words.\n\n<script>\n${P.ownScript}\n<\/script>\n\n${rules}`
+    : `Write a voiceover script for ${platform}.\nTopic: ${P.topic}\nTone: ${P.tone}\nLength: about ${P.lengthSec} seconds spoken, roughly ${wordsTarget} words in total, across ${n} scenes. Open with a hook and end with a short call to action.\n\n${rules}`;
+  const out = await sampleFn.json(prompt, { modelTier: 'default', onText: ({ text }) => { const el = $('#writing'); if (el) el.textContent = `Claude is writing… ${text.length} characters`; } });
+  if (!out || !Array.isArray(out.scenes) || !out.scenes.length) throw { code: 'invalid_json' };
+  return {
+    title: String(out.title || P.topic).slice(0, 100),
+    description: String(out.description || ''),
+    hashtags: (Array.isArray(out.hashtags) ? out.hashtags : []).map((h) => String(h).replace(/^#/, '').replace(/\s+/g, '')).filter(Boolean).slice(0, 6),
+    scenes: out.scenes.filter((s) => s && s.narration).map((s, i) => ({
+      id: uid(), text: String(s.narration).trim(), emoji: typeof s.emoji === 'string' && s.emoji.trim() ? [...s.emoji.trim()].slice(0, 2).join('') : FALLBACK_EMOJI[i % 8],
+      colors: Array.isArray(s.colors) && hex(s.colors[0]) && hex(s.colors[1]) ? s.colors.slice(0, 2) : PALETTES[i % PALETTES.length],
+    })),
+  };
+}
+
+function templateScript(own) {
+  const t = (P.topic || 'your idea').trim().replace(/[.?!]+$/, '');
+  let lines;
+  if (own) {
+    const sent = P.ownScript.replace(/\s+/g, ' ').trim().match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [];
+    lines = []; let buf = '';
+    for (const s of sent) { buf = buf ? `${buf} ${s.trim()}` : s.trim(); if (words(buf) >= 12) { lines.push(buf); buf = ''; } }
+    if (buf) lines.push(buf);
+  } else {
+    lines = [`Here's something worth a minute of your time: ${t}.`, 'Most people never stop to think about it.', 'But once you look closer, the details are fascinating.', "And you don't need to be an expert to enjoy it.", 'Follow for more ideas like this one.'];
+  }
+  return { title: t.charAt(0).toUpperCase() + t.slice(1), description: `A quick look at ${t}.`, hashtags: ['learn', 'shorts'], scenes: lines.map((text, i) => ({ id: uid(), text, emoji: FALLBACK_EMOJI[i % 8], colors: PALETTES[i % PALETTES.length] })) };
+}
+
+async function generate(own) {
+  if (!own && !P.topic.trim()) return toast('Type what your video is about first.');
+  if (own && !P.ownScript?.trim()) return toast('Paste your script first.');
+  busy.script = true; render();
+  let out, usedClaude = false;
+  try {
+    if (sampleFn) { out = await writeScript(own); usedClaude = true; }
+  } catch (e) {
+    const msg = { not_granted: 'Claude access was declined, so you got a starter template instead.', rate_limited: 'Claude is busy right now. You got a starter template; try "Rewrite" in a minute.', invalid_json: "Claude's answer came back garbled. You got a starter template; tap Rewrite to try again." }[e?.code] || 'Claude could not write this one, so you got a starter template.';
+    toast(msg);
+  }
+  if (!out) out = templateScript(own);
+  for (const s of P.scenes) if (s.mediaId) { idb.del(s.mediaId); media.delete(s.mediaId); }
+  Object.assign(P, out, { example: false, writer: usedClaude ? 'claude' : 'template' });
+  result = null;
+  busy.script = false;
+  save();
+  go(1);
+}
+
+// ---------------------------------------------------------------- views
+function shape(f) { const k = 22 / Math.max(f.w, f.h); return `<span class="shape" style="width:${Math.round(f.w * k)}px;height:${Math.round(f.h * k)}px"></span>`; }
+
+function monitorStyle(maxH) {
+  const [W, H] = dims();
+  const w = Math.min(1, (maxH * W) / H / 528);
+  return `aspect-ratio:${W}/${H};width:${Math.round(w * 100)}%`;
+}
+
+function viewIdea() {
+  return `
+  <h1>Make a video from one idea</h1>
+  <p class="lead">Claude writes the script and art-directs every scene. Add your voice and photos, then render it right here on your phone.</p>
+  <div class="monitor" style="${monitorStyle(300)}"><canvas id="hero"></canvas><span class="slate">${P.example ? 'EXAMPLE · ' : ''}LIVE PREVIEW</span></div>
+  <div class="stack" style="margin-top:20px">
+    <div>
+      <label class="lbl" for="topic">What's your video about?</label>
+      <textarea id="topic" class="input" data-bind="topic" rows="3" placeholder="e.g. 5 surprising facts about octopuses">${esc(P.topic)}</textarea>
+      <div class="chips" style="margin-top:10px">${EXAMPLES.map((e) => `<button class="chip ex" data-act="example" data-v="${esc(e)}">${esc(e)}</button>`).join('')}</div>
+    </div>
+    <div>
+      <span class="lbl">Shape</span>
+      <div class="formats">${Object.entries(FORMATS).map(([k, f]) => `<button class="fmt ${P.format === k ? 'on' : ''}" data-act="format" data-v="${k}">${shape(f)}${f.label}<span class="sub">${f.sub}</span></button>`).join('')}</div>
+    </div>
+    <div>
+      <span class="lbl">Length</span>
+      <div class="chips">${LENGTHS.map(([v, l]) => `<button class="chip ${P.lengthSec === v ? 'on' : ''}" data-act="length" data-v="${v}">${l}</button>`).join('')}</div>
+    </div>
+    <div>
+      <span class="lbl">Tone</span>
+      <div class="chips">${TONES.map((t) => `<button class="chip ${P.tone === t ? 'on' : ''}" data-act="tone" data-v="${t}">${t}</button>`).join('')}</div>
+    </div>
+    ${P.showOwn ? `<div><label class="lbl" for="own">Your script</label><textarea id="own" class="input" data-bind="ownScript" rows="7" placeholder="Paste the whole voiceover. Claude will split it into scenes and pick the art.">${esc(P.ownScript || '')}</textarea></div>` : ''}
+    <button class="btn small" style="align-self:flex-start" data-act="own">${P.showOwn ? 'Let Claude write it instead' : 'I already have a script'}</button>
+    ${busy.script ? `<p class="note" id="writing">Claude is thinking… this takes 10 to 40 seconds.</p>` : ''}
+    ${sampleFn === null ? '<p class="note warn small">Claude isn\'t reachable from this view, so scripts start from a template you can edit.</p>' : ''}
+  </div>`;
+}
+
+function viewScript() {
+  const tl = timeline();
+  return `
+  <h1>Script</h1>
+  <p class="lead">${P.writer === 'claude' ? 'Written by Claude.' : P.example ? 'This is the example script.' : 'A starter template.'} Tap any line to edit it. Each scene is one shot.</p>
+  <div class="stack">
+    <div><label class="lbl" for="title">Title</label><input id="title" class="input" data-bind="title" value="${esc(P.title)}" /></div>
+    ${P.scenes.map((s, i) => `
+      <div class="scene">
+        <div class="num">${String(i + 1).padStart(2, '0')}<small>${tl.items[i].dur.toFixed(1)}s</small></div>
+        <div>
+          <textarea data-scene="${s.id}" aria-label="Scene ${i + 1} narration" rows="3">${esc(s.text)}</textarea>
+          <div class="scene-tools">
+            <button class="icon" aria-label="Move up" data-act="move" data-id="${s.id}" data-d="-1" ${i ? '' : 'disabled'}>↑</button>
+            <button class="icon" aria-label="Move down" data-act="move" data-id="${s.id}" data-d="1" ${i < P.scenes.length - 1 ? '' : 'disabled'}>↓</button>
+            <button class="icon" aria-label="Delete scene" data-act="del" data-id="${s.id}">✕</button>
+          </div>
+        </div>
+      </div>`).join('')}
+    <div class="row" style="justify-content:space-between">
+      <button class="btn small" data-act="add">＋ Add scene</button>
+      <span class="muted small" id="stats">${P.scenes.reduce((a, s) => a + words(s.text), 0)} words · ${tcode(tl.total).slice(0, 5)}</span>
+    </div>
+    <button class="btn" data-act="rewrite" ${busy.script ? 'disabled' : ''}>${busy.script ? '<span class="spin"></span> Rewriting…' : '↻ Rewrite with Claude'}</button>
+    ${busy.script ? '<p class="note" id="writing">Claude is thinking…</p>' : ''}
+  </div>`;
+}
+
+function viewVoice() {
+  const up = P.voice.mode === 'upload';
+  return `
+  <h1>Voice</h1>
+  <p class="lead">Record yourself in Voice Memos (or make an MP3 in ElevenLabs) and add it here. Or skip the voice and let captions and music carry it.</p>
+  <div class="stack">
+    <button class="option ${up ? 'on' : ''}" data-act="voice" data-v="upload"><span class="glyph">🎙️</span><span><b>Use my recording</b><span class="muted small">M4A, MP3 or WAV from your phone</span></span></button>
+    <button class="option ${!up ? 'on' : ''}" data-act="voice" data-v="none"><span class="glyph">💬</span><span><b>No voiceover</b><span class="muted small">Captions and music only</span></span></button>
+    ${up ? (voiceFile ? `
+      <div class="note"><b>${esc(voiceFile.name)}</b> · ${tcode(voiceFile.duration).slice(0, 5)}<br><span class="small">The scenes are spread across your recording by how much text each one has.</span></div>
+      <audio controls src="${esc(voiceFile.url)}" style="width:100%"></audio>
+      <button class="btn small" data-act="pick-voice">Replace recording</button>`
+      : `<button class="drop" data-act="pick-voice"><div style="font-size:30px">⬆</div><b>Choose a recording</b><div class="muted small">It stays on your phone</div></button>`) : ''}
+    <label class="toggle" for="music"><span><b>Background music</b><br><span class="muted small">A soft generated track${up ? ', kept quiet under your voice' : ''}</span></span><input type="checkbox" id="music" data-check="music" ${P.music ? 'checked' : ''} /><span class="sw"></span></label>
+    <label class="toggle" for="captions"><span><b>Captions</b><br><span class="muted small">Bold words timed to each scene</span></span><input type="checkbox" id="captions" data-check="captions" ${P.captions ? 'checked' : ''} /><span class="sw"></span></label>
+  </div>`;
+}
+
+function viewLook() {
+  return `
+  <h1>Look</h1>
+  <p class="lead">Every scene has animated art picked by Claude. Swap in your own photo or clip from the camera roll, or try other colours.</p>
+  <div class="shots">
+    ${P.scenes.map((s, i) => `
+      <div class="shot">
+        <canvas data-thumb="${i}" style="aspect-ratio:${dims()[0]}/${dims()[1]}"></canvas>
+        <div class="body">
+          <div class="txt"><b>${String(i + 1).padStart(2, '0')}</b> ${esc(s.text)}</div>
+          <div class="tools">
+            ${s.mediaId ? `<button class="btn" data-act="unmedia" data-id="${s.id}">Use art</button>` : `<button class="btn" data-act="pick-media" data-id="${s.id}">📷 Photo</button>`}
+            ${s.mediaId ? `<button class="btn" data-act="pick-media" data-id="${s.id}">Replace</button>` : `<button class="btn" data-act="colors" data-id="${s.id}">🎨 Colours</button>`}
+            ${s.mediaId ? '' : `<button class="btn" data-act="emoji" data-id="${s.id}" style="grid-column:1/-1">${esc(s.emoji || '✨')} Change emoji</button>`}
+          </div>
+        </div>
+      </div>`).join('')}
+  </div>
+  <div class="stack" style="margin-top:18px">
+    <span class="lbl">Quality</span>
+    <div class="chips"><button class="chip ${!P.hd ? 'on' : ''}" data-act="hd" data-v="0">720p · faster</button><button class="chip ${P.hd ? 'on' : ''}" data-act="hd" data-v="1">1080p · sharper</button></div>
+  </div>`;
+}
+
+function viewRender() {
+  const tl = timeline();
+  if (result) {
+    return `
+    <h1>It's a wrap</h1>
+    <p class="lead">${tcode(tl.total).slice(0, 5)} · ${FORMATS[P.format].label} · ${result.ext.toUpperCase()}</p>
+    <div class="monitor" style="${monitorStyle(460)}"><video src="${esc(result.url)}" controls playsinline></video></div>
+    <div class="stack" style="margin-top:18px">
+      ${result.ext === 'webm' ? '<p class="note warn small">Your browser recorded WebM. YouTube accepts it; for TikTok or Instagram, open this page in Safari on iPhone or a recent Chrome to get MP4.</p>' : ''}
+      <div><label class="lbl" for="pub-title">Title</label><div class="row" style="flex-wrap:nowrap"><input id="pub-title" class="input" data-bind="title" value="${esc(P.title)}" /><button class="btn small" data-act="copy" data-t="pub-title">Copy</button></div></div>
+      <div><label class="lbl" for="pub-desc">Caption</label><textarea id="pub-desc" class="input" rows="5">${esc(`${P.description || ''}\n\n${(P.hashtags || []).map((h) => `#${h}`).join(' ')}`.trim())}</textarea><button class="btn small" style="margin-top:8px" data-act="copy" data-t="pub-desc">Copy caption</button></div>
+      <div><span class="lbl">Post it</span><p class="muted small" style="margin:0 0 8px">Save the video, then open the app and paste your caption.</p>
+        <div class="chips">${[['TikTok', 'https://www.tiktok.com/upload'], ['YouTube', 'https://studio.youtube.com/'], ['Instagram', 'https://www.instagram.com/'], ['Facebook', 'https://www.facebook.com/']].map(([n, u]) => `<a class="chip" href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join('')}</div>
+      </div>
+      <button class="btn small" data-act="retake">↻ Render again</button>
+    </div>`;
+  }
+  return `
+  <h1>${live === 'rec' ? 'Rolling' : 'Render'}</h1>
+  <p class="lead">${live === 'rec' ? 'Recording in real time. Keep this screen open until it finishes.' : `Your ${tcode(tl.total).slice(0, 5)} video records in real time, so it takes as long as it plays. Preview first if you like.`}</p>
+  <div class="monitor" style="${monitorStyle(460)}"><canvas id="stage"></canvas><span class="slate" id="slate">${live ? '' : 'READY'}</span></div>
+  <div class="stack" style="margin-top:14px">
+    <div class="meter"><div id="meter"></div></div>
+    <div class="row" style="justify-content:space-between"><span class="muted small" id="rstat">${P.scenes.length} scenes · ${P.voice.mode === 'upload' && voiceFile ? 'your voice' : 'no voice'}${P.music ? ' · music' : ''}${P.captions ? ' · captions' : ''}</span>
+    ${!live ? '<button class="btn small" data-act="preview">▶ Preview</button>' : ''}</div>
+    ${P.voice.mode === 'upload' && !voiceFile ? '<p class="note warn small">You chose "Use my recording" but haven\'t added one yet. Go back to Voice, or this take will have no voice.</p>' : ''}
+  </div>`;
+}
+
+// ---------------------------------------------------------------- render loop
+function canVisit(i) { return i <= 3 ? P.scenes.length > 0 || i === 0 : P.scenes.length > 0; }
+
+function render() {
+  $('#steps').innerHTML = STEPS.map((s, i) => `<button class="${i === step ? 'on' : i < step ? 'done' : ''}" data-act="step" data-v="${i}" ${canVisit(i) && !live ? '' : 'disabled'}>${s}</button>`).join('');
+  $('#view').innerHTML = [viewIdea, viewScript, viewVoice, viewLook, viewRender][step]();
+  renderDock();
+  updateTC();
+  if (step === 0) startHero(); else stopHero();
+  if (step === 3) drawThumbs();
+  if (step === 4 && !result && !live) drawStill();
+}
+
+function renderDock() {
+  let html;
+  const back = step > 0 && !live ? '<button class="btn" data-act="back" aria-label="Back">←</button>' : '<span></span>';
+  if (step === 0) html = `${back}<button class="btn primary" data-act="${P.showOwn ? 'use-own' : 'write'}" ${busy.script ? 'disabled' : ''}>${busy.script ? '<span class="spin"></span> Writing…' : P.showOwn ? 'Use my script →' : '✨ Write my script'}</button>`;
+  else if (step === 1) html = `${back}<button class="btn primary" data-act="next" ${P.scenes.length ? '' : 'disabled'}>Next: Voice →</button>`;
+  else if (step === 2) html = `${back}<button class="btn primary" data-act="next">Next: Look →</button>`;
+  else if (step === 3) html = `${back}<button class="btn primary" data-act="next">Next: Render →</button>`;
+  else if (live) html = `${back}<button class="btn rec" data-act="stop">■ Stop</button>`;
+  else if (result) html = `${back}<button class="btn primary" data-act="save" ${busy.save ? 'disabled' : ''}>${busy.save ? '<span class="spin"></span> Saving…' : '⬇ Save video'}</button>`;
+  else html = `${back}<button class="btn rec" data-act="record">● Record video</button>`;
+  $('#dock').innerHTML = html;
+}
+
+function go(i) { if (live) return; step = i; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+// Hero: loop the current project silently on the first screen.
+let heroRaf = 0;
+async function startHero() {
+  cancelAnimationFrame(heroRaf);
+  const c = $('#hero');
+  if (!c) return;
+  const [W, H] = dims();
+  const scale = 0.5;
+  c.width = Math.round(W * scale); c.height = Math.round(H * scale);
+  const ctx = c.getContext('2d');
+  const assets = await loadAssets();
+  const tl = timeline();
+  const t0 = performance.now();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const loop = () => {
+    if (!document.body.contains(c)) return;
+    const t = reduce ? 0.8 : ((performance.now() - t0) / 1000) % tl.total;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    drawFrame(ctx, W, H, t, tl, assets);
+    if (!reduce) heroRaf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function stopHero() { cancelAnimationFrame(heroRaf); }
+
+async function drawThumbs() {
+  const assets = await loadAssets();
+  const tl = timeline();
+  const [W, H] = dims();
+  document.querySelectorAll('[data-thumb]').forEach((c) => {
+    const i = Number(c.dataset.thumb);
+    const s = 0.3;
+    c.width = Math.round(W * s); c.height = Math.round(H * s);
+    const ctx = c.getContext('2d');
+    ctx.setTransform(s, 0, 0, s, 0, 0);
+    drawScene(ctx, W, H, i, Math.min(1.2, tl.items[i].dur / 2), tl.items[i].dur, assets);
+    if (P.captions) drawCaption(ctx, W, H, P.scenes[i].text, 0.05, tl.items[i].dur);
+  });
+}
+
+async function drawStill() {
+  const c = $('#stage');
+  if (!c) return;
+  const [W, H] = dims();
+  c.width = W; c.height = H;
+  drawFrame(c.getContext('2d'), W, H, 0.9, timeline(), await loadAssets());
+}
+
+// ---------------------------------------------------------------- actions
+async function startRun(record) {
+  if (live) return;
+  live = record ? 'rec' : 'preview';
+  result = null;
+  render(); // show the live layout first; the engine then draws on this canvas
+  const c = $('#stage');
+  if (record) $('#tc').classList.add('live');
+  try {
+    await run({
+      canvas: c, record,
+      onTick: (t, total, i) => {
+        const m = $('#meter'); if (m) m.style.width = `${Math.min(100, (t / total) * 100)}%`;
+        const sl = $('#slate'); if (sl) sl.textContent = `${record ? '● REC' : '▶ PREVIEW'} · SCENE ${String(i + 1).padStart(2, '0')}`;
+        $('#tc-text').textContent = tcode(Math.min(t, total));
+      },
+      onEnd: (blob, type) => {
+        live = null;
+        $('#tc').classList.remove('live');
+        if (blob && blob.size) {
+          const ext = /mp4/.test(type) ? 'mp4' : 'webm';
+          result = { blob, url: URL.createObjectURL(blob), ext };
+          toast('Your video is ready.');
+        } else if (record) toast('Recording stopped. Nothing was saved.');
+        render();
+      },
+    });
+  } catch (e) {
+    engine = null;
+    live = null;
+    $('#tc').classList.remove('live');
+    toast(e.message || 'Something went wrong while rendering.');
+    render();
+  }
+}
+
+async function saveVideo() {
+  if (!result) return;
+  if (!downloadsApi) return toast('Saving is not available in this view. Open this page in the Claude app or on claude.ai.');
+  busy.save = true; renderDock();
+  const name = `${(P.title || 'my-video').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'my-video'}.${result.ext}`;
+  try {
+    await downloadsApi.save({ filename: name, data: result.blob });
+    toast('Saved. Now open TikTok, YouTube or Instagram and post it.');
+  } catch (e) {
+    if (e?.code !== 'declined') toast(e?.code === 'rate_limited' ? 'A save prompt is already open.' : 'The video could not be saved here.');
+  }
+  busy.save = false; renderDock();
+}
+
+async function addVoice(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const duration = await new Promise((res) => { const a = new Audio(); a.preload = 'metadata'; a.onloadedmetadata = () => res(a.duration); a.onerror = () => res(0); a.src = url; });
+  if (!duration || !isFinite(duration)) { toast("That file doesn't play as audio. Try an M4A or MP3."); return; }
+  voiceFile = { url, blob: file, name: file.name || 'Recording', duration };
+  P.voice = { mode: 'upload', name: voiceFile.name, duration };
+  idb.put('voice', file);
+  save(); render();
+  toast('Recording added.');
+}
+
+let mediaTarget = null;
+async function addMedia(file) {
+  const s = P.scenes.find((x) => x.id === mediaTarget);
+  if (!file || !s) return;
+  const type = file.type.startsWith('video') ? 'video' : 'image';
+  if (s.mediaId) { idb.del(s.mediaId); media.delete(s.mediaId); }
+  const id = `m-${uid()}`;
+  media.set(id, { type, url: URL.createObjectURL(file), name: file.name });
+  s.mediaId = id; s.mediaType = type;
+  idb.put(id, file);
+  save(); render();
+}
+
+const ACTIONS = {
+  step: (el) => go(Number(el.dataset.v)),
+  next: () => go(step + 1),
+  back: () => go(step - 1),
+  example: (el) => { P.topic = el.dataset.v; save(); render(); },
+  format: (el) => { P.format = el.dataset.v; chunkCache.clear(); result = null; save(); render(); },
+  length: (el) => { P.lengthSec = Number(el.dataset.v); save(); render(); },
+  tone: (el) => { P.tone = el.dataset.v; save(); render(); },
+  own: () => { P.showOwn = !P.showOwn; save(); render(); },
+  write: () => generate(false),
+  'use-own': () => generate(true),
+  rewrite: () => generate(!!(P.showOwn && P.ownScript)),
+  add: () => { P.scenes.push({ id: uid(), text: 'New scene. Tap to write.', emoji: FALLBACK_EMOJI[P.scenes.length % 8], colors: PALETTES[P.scenes.length % 8] }); save(); render(); },
+  del: (el) => { if (P.scenes.length < 2) return toast('A video needs at least one scene.'); const s = P.scenes.find((x) => x.id === el.dataset.id); if (s?.mediaId) idb.del(s.mediaId); P.scenes = P.scenes.filter((x) => x.id !== el.dataset.id); save(); render(); },
+  move: (el) => { const a = P.scenes, i = a.findIndex((x) => x.id === el.dataset.id), j = i + Number(el.dataset.d); if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; save(); render(); },
+  voice: (el) => { P.voice = el.dataset.v === 'upload' ? { mode: 'upload', ...(voiceFile ? { name: voiceFile.name, duration: voiceFile.duration } : {}) } : { mode: 'none' }; save(); render(); },
+  'pick-voice': () => $('#f-voice').click(),
+  'pick-media': (el) => { mediaTarget = el.dataset.id; $('#f-media').click(); },
+  unmedia: (el) => { const s = P.scenes.find((x) => x.id === el.dataset.id); if (s?.mediaId) { idb.del(s.mediaId); media.delete(s.mediaId); } delete s.mediaId; save(); render(); },
+  colors: (el) => { const s = P.scenes.find((x) => x.id === el.dataset.id); const cur = PALETTES.findIndex((p) => p[0] === s.colors?.[0]); s.colors = PALETTES[(cur + 1 + Math.floor(Math.random() * 3)) % PALETTES.length]; save(); drawThumbs(); },
+  emoji: (el) => {
+    const s = P.scenes.find((x) => x.id === el.dataset.id);
+    const box = el.closest('.tools');
+    box.innerHTML = `<input class="input" style="grid-column:1/-1;font-size:22px;text-align:center;padding:6px" maxlength="8" value="${esc(s.emoji || '')}" data-emoji="${s.id}" aria-label="Emoji for scene" /><button class="btn" style="grid-column:1/-1" data-act="emoji-done">Done</button>`;
+    const inp = box.querySelector('input'); inp.focus(); inp.select();
+  },
+  'emoji-done': () => { save(); render(); },
+  hd: (el) => { P.hd = el.dataset.v === '1'; result = null; save(); render(); },
+  preview: () => startRun(false),
+  record: () => startRun(true),
+  stop: () => engine?.stop(),
+  retake: () => { result = null; render(); },
+  save: () => saveVideo(),
+  copy: async (el) => {
+    const t = document.getElementById(el.dataset.t);
+    try { await navigator.clipboard.writeText(t.value); toast('Copied.'); } catch { t.focus(); t.select(); toast('Selected. Use your phone\'s Copy.'); }
+  },
+};
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const fn = ACTIONS[el.dataset.act];
+  if (fn) { e.preventDefault(); fn(el, e); }
+});
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (el.dataset.bind) { P[el.dataset.bind] = el.value; save(); }
+  if (el.dataset.scene) {
+    const s = P.scenes.find((x) => x.id === el.dataset.scene);
+    if (s) { s.text = el.value; save(); const st = $('#stats'); if (st) st.textContent = `${P.scenes.reduce((a, x) => a + words(x.text), 0)} words · ${tcode(timeline().total).slice(0, 5)}`; updateTC(); }
+  }
+  if (el.dataset.emoji) { const s = P.scenes.find((x) => x.id === el.dataset.emoji); if (s) { s.emoji = [...el.value.trim()].slice(0, 2).join(''); save(); } }
+});
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if (el.dataset.check) { P[el.dataset.check] = el.checked; save(); }
+  if (el.id === 'f-voice') { addVoice(el.files[0]); el.value = ''; }
+  if (el.id === 'f-media') { addMedia(el.files[0]); el.value = ''; }
+});
+
+// ---------------------------------------------------------------- boot
+async function restoreBlobs() {
+  if (P.voice.mode === 'upload') {
+    const b = await idb.get('voice');
+    if (b) voiceFile = { url: URL.createObjectURL(b), blob: b, name: P.voice.name || 'Recording', duration: P.voice.duration || 0 };
+  }
+  for (const s of P.scenes) {
+    if (!s.mediaId) continue;
+    const b = await idb.get(s.mediaId);
+    if (b) media.set(s.mediaId, { type: s.mediaType || (b.type.startsWith('video') ? 'video' : 'image'), url: URL.createObjectURL(b) });
+    else delete s.mediaId;
+  }
+}
+
+render();
+restoreBlobs().then(() => render());
+if (window.claude?.use) {
+  window.claude.use('sample').then((s) => { sampleFn = s; if (step === 0) render(); });
+  window.claude.use('downloads').then((d) => { downloadsApi = d; });
+} else {
+  sampleFn = null;
+}
+// No viewer answered (e.g. the file opened on its own): stop waiting after 10 s.
+setTimeout(() => { if (sampleFn === undefined) { sampleFn = null; if (step === 0) render(); } }, 10500);
+})();
+</script>
