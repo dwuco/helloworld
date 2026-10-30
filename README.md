@@ -152,6 +152,18 @@ public/sw.js              Service worker (network-first pages, cache-first hashe
   - Accessibility: **axe-core WCAG 2 A/AA scans** of the primary pages (no serious or critical violations).
 - **Database:** `supabase/tests/run.sh` applies the migration twice (it's idempotent) and runs the RLS checks.
 
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request, on pushes to `master`, and on manual dispatch. It has three parallel jobs:
+
+| Job | Runs |
+| --- | --- |
+| Typecheck, lint, unit tests, build | `npm ci`, `typecheck`, `lint`, `test`, `build` on Node 22 |
+| End-to-end | `npm run test:e2e` (desktop + iPhone viewport, axe scans); uploads the Playwright report when it fails |
+| Supabase schema & row-level security | `supabase/tests/run.sh` against a PostgreSQL 16 service container |
+
+Playwright runs with no retries, so a green run means every test passed on its first attempt.
+
 ## Accessibility
 
 - Form controls have labels, with hints and errors linked to them.
