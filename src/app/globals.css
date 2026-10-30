@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/* Semantic color tokens. Utilities like bg-surface / text-muted read these
+   variables, so dark mode only has to redefine them. */
+@theme {
+  --color-bg: #f6f7f4;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2ee;
+  --color-border: #dfe3dc;
+  --color-text: #17201a;
+  --color-muted: #5b665e;
+  --color-primary: #1f7a4d;
+  --color-primary-strong: #17603c;
+  --color-primary-soft: #e3f2ea;
+  --color-on-primary: #ffffff;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-warning: #a15c07;
+  --color-warning-soft: #fff4e0;
+  --color-info: #1d5fa8;
+  --color-info-soft: #e6f0fb;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f1411;
+    --color-surface: #171d19;
+    --color-surface-2: #1e2621;
+    --color-border: #2c3630;
+    --color-text: #e8eee9;
+    --color-muted: #9aa69e;
+    --color-primary: #3fb37a;
+    --color-primary-strong: #5cc792;
+    --color-primary-soft: #1b3326;
+    --color-on-primary: #08130d;
+    --color-danger: #f97066;
+    --color-danger-soft: #3a1714;
+    --color-warning: #f5b453;
+    --color-warning-soft: #33250e;
+    --color-info: #7cb4f0;
+    --color-info-soft: #13253a;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Consistent, visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* iOS: inputs below 16px trigger zoom-on-focus. */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
